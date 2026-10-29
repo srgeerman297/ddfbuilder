@@ -1,0 +1,2499 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231f5c55%22/%3E%3Ctext x=%2216%22 y=%2222%22 font-size=%2216%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22%3EDDF%3C/text%3E%3C/svg%3E">
+<title>Shufti DDF Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+[hidden]{display:none!important}
+/* Layout: a working ledger. Outline + checks on the left, the page being edited on the right, CSV preview as its own tab. */
+:root {
+  --bg: #eef1f0; --panel: #ffffff; --sunk: #f5f7f6; --line: #d5dcda; --line-strong: #b4c0bd;
+  --fg: #182624; --muted: #5a6b68; --accent: #1f5c55; --accent-ink: #ffffff; --accent-soft: #dcebe8;
+  --warn: #8a5a00; --warn-bg: #fbf0d8; --err: #a3271c; --err-bg: #f9e2df; --ok: #2e6b3a;
+  --f-display: "IBM Plex Serif", Georgia, serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121817; --panel: #1a2220; --sunk: #151c1b; --line: #2c3835; --line-strong: #3f4f4b;
+  --fg: #e3ebe9; --muted: #96a8a4; --accent: #6fc0b4; --accent-ink: #0d1a18; --accent-soft: #1f3632;
+  --warn: #e8b85c; --warn-bg: #3a2e14; --err: #f08a7e; --err-bg: #3c1d19; --ok: #8fd19c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121817; --panel: #1a2220; --sunk: #151c1b; --line: #2c3835; --line-strong: #3f4f4b;
+  --fg: #e3ebe9; --muted: #96a8a4; --accent: #6fc0b4; --accent-ink: #0d1a18; --accent-soft: #1f3632;
+  --warn: #e8b85c; --warn-bg: #3a2e14; --err: #f08a7e; --err-bg: #3c1d19; --ok: #8fd19c; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--f-body); }
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 16px 48px; display: grid; gap: 16px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+.mono { font-family: var(--f-mono); }
+
+/* top bar */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; justify-content: space-between; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { font: 600 22px/1.2 var(--f-display); }
+.brand span { white-space: nowrap; color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { border: 1px solid var(--line-strong); background: var(--panel); border-radius: var(--r); padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
+.btn.ghost:hover { color: var(--fg); border-color: var(--line); }
+.btn.danger { color: var(--err); }
+.btn.sm { padding: 3px 8px; font-size: 13px; }
+.btn[disabled] { opacity: .45; cursor: default; }
+
+.formbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
+.formbar label { font-size: 12px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.formbar .name { flex: 1 1 220px; min-width: 0; font: 600 16px var(--f-body); border: 1px solid transparent; border-radius: var(--r); padding: 4px 8px; background: transparent; }
+.formbar .name:hover, .formbar .name:focus { border-color: var(--line); background: var(--sunk); }
+select.lib { max-width: 220px; }
+
+input.f, select.f, textarea.f { background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; min-width: 0; }
+input.f:focus, select.f:focus, textarea.f:focus { border-color: var(--accent); outline: none; background: var(--panel); }
+
+/* main grid */
+.grid { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.side { display: grid; gap: 16px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+@media (max-width: 860px) { .side { position: static; } }
+@media (max-width: 480px) { .brand span { display: none; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+.card > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+/* outline */
+.meter { padding: 10px 12px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+.meter .track { height: 6px; background: var(--sunk); border: 1px solid var(--line); border-radius: 99px; overflow: hidden; }
+.meter .fill { height: 100%; background: var(--accent); }
+.meter.over .fill { background: var(--warn); }
+.meter p { margin: 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pages { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; }
+.pages li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 6px 6px; border-radius: var(--r); cursor: pointer; border: 1px solid transparent; }
+.pages li:hover { background: var(--sunk); }
+.pages li.on { background: var(--accent-soft); border-color: var(--accent); }
+.pages .n { font: 500 12px var(--f-mono); color: var(--muted); text-align: right; }
+.pages .t { min-width: 0; }
+.pages .t b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pages .t small { color: var(--muted); font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot.err { background: var(--err); } .dot.warn { background: var(--warn); }
+.pages-foot { padding: 8px 12px 12px; }
+
+/* checks */
+.checks { list-style: none; margin: 0; padding: 8px; display: grid; gap: 6px; max-height: 340px; overflow: auto; }
+.checks li { font-size: 13px; padding: 6px 8px; border-radius: var(--r); cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+.checks li.error { background: var(--err-bg); }
+.checks li.warn { background: var(--warn-bg); }
+.checks .tag { font: 600 10px var(--f-mono); letter-spacing: .05em; padding-top: 2px; }
+.checks .error .tag { color: var(--err); } .checks .warn .tag { color: var(--warn); }
+.allgood { padding: 12px; color: var(--ok); font-size: 13px; margin: 0; }
+.counts { font: 500 12px var(--f-mono); display: flex; gap: 10px; }
+.counts .e { color: var(--err); } .counts .w { color: var(--warn); }
+
+details.help { font-size: 13px; }
+details.help summary { padding: 10px 12px; cursor: pointer; font-weight: 500; }
+details.help div { padding: 0 12px 12px; display: grid; gap: 8px; color: var(--muted); }
+details.help p { margin: 0; }
+details.help code { font-family: var(--f-mono); font-size: 12px; color: var(--fg); background: var(--sunk); padding: 1px 4px; border-radius: 3px; overflow-wrap: anywhere; }
+
+/* tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: none; padding: 8px 14px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+.tabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
+.main { display: grid; gap: 16px; min-width: 0; }
+
+/* page editor */
+.pagehead { padding: 14px 16px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+.pagehead .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pagehead input.title { flex: 1 1 260px; font: 600 20px var(--f-display); padding: 6px 10px; }
+.section { padding: 14px 16px; display: grid; gap: 10px; }
+.section + .section { border-top: 1px solid var(--line); }
+.section h3 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.empty { color: var(--muted); font-size: 13px; padding: 12px; border: 1px dashed var(--line-strong); border-radius: var(--r); margin: 0; }
+
+.q { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; padding: 10px; align-items: start; }
+.q.flash, .rule.flash { box-shadow: 0 0 0 2px var(--warn); }
+.q .num { font: 500 12px var(--f-mono); color: var(--muted); padding-top: 8px; text-align: right; }
+.q .body { display: grid; gap: 8px; min-width: 0; }
+.q .line { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 8px; }
+@media (max-width: 560px) { .q .line { grid-template-columns: minmax(0, 1fr); } .q { grid-template-columns: minmax(0, 1fr) auto; } .q .num { display: none; } }
+.q .opts { display: grid; gap: 4px; }
+.q .opts label, .hint { font-size: 12px; color: var(--muted); }
+.q textarea { resize: vertical; min-height: 64px; width: 100%; }
+.q .tools { display: flex; flex-direction: column; gap: 2px; }
+.typenote { font-size: 12px; color: var(--muted); margin: 0; }
+
+/* rules */
+.rule { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--r); padding: 10px 12px; display: grid; gap: 8px; background: var(--sunk); }
+.rule .rhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rule .kw { font: 600 11px var(--f-mono); letter-spacing: .08em; color: var(--accent); width: 44px; flex: none; padding-top: 7px; }
+.cond, .then { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.cond select.join { width: 74px; }
+.cond .qsel { flex: 1 1 200px; } .cond .op { width: 96px; } .cond .val { flex: 1 1 180px; }
+.then .act { width: 160px; } .then .tgt { flex: 1 1 220px; min-width: 0; }
+.then .act.also { font-size: 13px; color: var(--muted); padding: 7px 0 0 2px; }
+select.f { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.cond > *, .then > * { min-width: 0; }
+.section, .rule, .q .body { min-width: 0; }
+.wrap, .main, .section, .rule, .side, #viewBuild { grid-template-columns: minmax(0, 1fr); }
+.movepick { display: flex; gap: 6px; align-items: center; } .movepick select { font-size: 12px; padding: 2px 6px; max-width: 240px; }
+a.jump { color: var(--accent); text-transform: none; letter-spacing: 0; font-weight: 500; }
+/* chat */
+.chatcard { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; height: min(78vh, 760px); min-height: 460px; }
+.chathead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.chatlog { overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: var(--sunk); }
+.msg { max-width: min(78ch, 88%); padding: 9px 13px; border-radius: 12px; white-space: pre-line; overflow-wrap: anywhere; line-height: 1.45; }
+.msg.bot { background: var(--panel); border: 1px solid var(--line); align-self: flex-start; border-bottom-left-radius: 4px; }
+.msg.me { background: var(--accent); color: var(--accent-ink); align-self: flex-end; border-bottom-right-radius: 4px; }
+.msg.thinking { color: var(--muted); font-style: italic; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px 0; max-height: 30vh; overflow-y: auto; }
+.chip { border: 1px solid var(--accent); color: var(--accent); background: var(--panel); border-radius: 999px; padding: 5px 12px; cursor: pointer; font-size: 13px; text-align: left; max-width: 100%; overflow-wrap: anywhere; }
+.chip:hover { background: var(--accent-soft); }
+.chip small { color: var(--muted); margin-left: 6px; font-size: 11px; }
+.chatform { display: flex; gap: 8px; padding: 10px 14px 14px; align-items: flex-end; }
+.chatform textarea { flex: 1; resize: none; min-height: 38px; max-height: 160px; line-height: 1.4; }
+textarea.qtitle { resize: none; overflow: hidden; line-height: 1.4; min-height: 34px; width: 100%; }
+.cond .qsel, .cond .val, .then .tgt { max-width: 100%; }
+.cond .val.checks-in { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); font-size: 13px; }
+.cond .val.checks-in label { display: inline-flex; gap: 4px; align-items: center; }
+.reads { font-size: 13px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 0; }
+.reads .code { display: block; font: 12px var(--f-mono); color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+
+/* csv */
+.csvwrap { overflow: auto; max-height: 70vh; }
+table.csv { border-collapse: collapse; font: 12px/1.4 var(--f-mono); width: 100%; min-width: 760px; }
+table.csv th, table.csv td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+table.csv th { position: sticky; top: 0; background: var(--sunk); font-weight: 500; }
+table.csv tr.prow td { background: var(--accent-soft); font-weight: 500; }
+table.csv td.rules { max-width: 420px; overflow-wrap: anywhere; }
+pre.raw { margin: 0; padding: 12px 16px; font: 12px/1.5 var(--f-mono); white-space: pre; overflow: auto; max-height: 50vh; border-top: 1px solid var(--line); }
+
+/* dialog */
+.overlay { position: fixed; inset: 0; background: rgb(0 0 0 / .35); display: grid; place-items: center; padding: 16px; z-index: 10; }
+.dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: min(640px, 100%); max-height: calc(100% - 32px); overflow: auto; padding: 18px; display: grid; gap: 12px; }
+.dialog h2 { font: 600 18px var(--f-display); }
+.dialog textarea { width: 100%; min-height: 160px; font: 12px var(--f-mono); }
+.dialog .bar { justify-content: flex-end; }
+.err-text { color: var(--err); font-size: 13px; margin: 0; }
+
+.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: var(--r); font-size: 13px; z-index: 20; max-width: calc(100% - 32px); }
+.confirm { color: var(--err); border-color: var(--err); }
+@media (prefers-reduced-motion: no-preference) { .q, .rule, .pages li { transition: background .12s, box-shadow .2s; } }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><h1>Shufti DDF Builder</h1><span>Due Diligence Forms</span></div>
+    <div class="bar">
+      <button class="btn" id="btnImport" type="button">Import CSV</button>
+      <button class="btn" id="btnPdf" type="button">Import PDF</button>
+      <button class="btn" id="btnCopy" type="button">Copy CSV</button>
+      <button class="btn primary" id="btnDownload" type="button" hidden>Download CSV</button>
+    </div>
+  </div>
+
+  <div class="formbar">
+    <label for="formName">Form</label>
+    <input class="name" id="formName" aria-label="Form name">
+    <select class="f lib" id="formLib" aria-label="Saved forms"></select>
+    <button class="btn sm" id="btnNew" type="button">New form</button>
+    <button class="btn sm" id="btnSample" type="button">Load Shufti sample</button>
+    <button class="btn sm" id="btnTest" type="button">Load 5-question test</button>
+    <button class="btn sm" id="btnDup" type="button">Duplicate</button>
+    <button class="btn sm danger" id="btnDel" type="button">Delete</button>
+  </div>
+
+  <div class="grid">
+    <aside class="side">
+      <section class="card">
+        <header><span class="eyebrow">Pages</span><span class="hint" id="pageCount"></span></header>
+        <div class="meter" id="meter"></div>
+        <ol class="pages" id="pageList"></ol>
+        <div class="pages-foot"><button class="btn sm" id="btnAddPage" type="button">+ Add page</button></div>
+      </section>
+      <section class="card">
+        <header><span class="eyebrow">Checks</span><span class="counts" id="counts"></span></header>
+        <div id="checks"></div>
+      </section>
+      <section class="card">
+        <details class="help">
+          <summary>How Shufti reads the file</summary>
+          <div>
+            <p>Each page is one row, followed by one row per question. Rules always sit on the page row and use questions from that same page.</p>
+            <p><b>Show / Hide</b> changes a question on the same page. <b>Jump / Skip</b> goes to, or leaves out, a later page.</p>
+            <p>A rule is written <code>Question, EQUAL, Value ;JUMP; Page</code>. Several rules on one page are joined with <code> ||| </code>. This builder writes all of that for you.</p>
+            <p><b>Confirmed</b> from Shufti's own sample file: the column layout, quoting, answer type spellings, and the four actions.</p>
+            <p><b>Seen in a live client form:</b> the answer type <code>Email</code>, one Show or Hide rule naming several questions, and multiple-select rules that list every combination of ticked boxes. That last one suggests a multiple-select rule matches only that exact combination. This is inferred, not documented.</p>
+            <p><b>Not confirmed by Shufti:</b> which comes first when a rule mixes AND with OR, and whether a question targeted by Show starts hidden. The checks flag these so you can test them in Shufti before going live.</p>
+            <p>Shufti's default limit is 20 questions per form. Support can raise it.</p>
+          </div>
+        </details>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tabChat" class="on">Chat</button>
+        <button type="button" role="tab" id="tabBuild">Build</button>
+        <button type="button" role="tab" id="tabCsv">CSV preview</button>
+      </div>
+      <section class="card chatcard" id="viewChat"></section>
+      <section class="card" id="viewBuild" hidden></section>
+      <section class="card" id="viewCsv" hidden></section>
+    </main>
+  </div>
+</div>
+
+<script>
+// Standalone build only (ddfbuilder.axioma-corp.com). On claude.ai the page gets `window.claude`
+// from the host; here the same two capabilities are provided by the page itself:
+//  - downloads: a normal browser download of the CSV.
+//  - sample: Claude through the site's own /api/claude endpoint, which holds the API key.
+//    If that endpoint is missing or switched off, `use('sample')` fails and the builder
+//    falls back to the step-by-step chat, exactly as it does on claude.ai without `sample`.
+(function () {
+  if (window.claude && window.claude.use) return;
+  const API = '/api/claude';
+  const fail = (code, msg) => { const e = new Error(msg || code); e.code = code; return e; };
+  const CODE_KEY = 'ddf-builder-access-code';
+  const getCode = () => { try { return localStorage.getItem(CODE_KEY) || ''; } catch (e) { return ''; } };
+  const setCode = (c) => { try { c ? localStorage.setItem(CODE_KEY, c) : localStorage.removeItem(CODE_KEY); } catch (e) {} };
+  const headers = () => { const h = { 'content-type': 'application/json' }; const c = getCode(); if (c) h['x-access-code'] = c; return h; };
+  const toB64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
+
+  const downloads = {
+    async save({ filename, data, mimeType }) {
+      const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType || 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename || 'download.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  };
+
+  async function status() {
+    let r;
+    try { r = await fetch(API, { headers: headers(), cache: 'no-store' }); } catch (e) { throw fail('unavailable'); }
+    if (r.status === 401) {
+      const c = window.prompt('Enter the AXIOMA access code to use Claude in the builder (leave empty to use the step-by-step chat):', '');
+      if (!c) throw fail('not_granted');
+      setCode(c.trim());
+      try { r = await fetch(API, { headers: headers(), cache: 'no-store' }); } catch (e) { throw fail('unavailable'); }
+      if (r.status === 401) { setCode(''); alert('That access code is not right. The builder will use the step-by-step chat.'); throw fail('not_granted'); }
+    }
+    if (!r.ok) throw fail('unavailable');
+    const info = await r.json().catch(() => null);
+    if (!info || !info.enabled) throw fail('unavailable');
+    return info;
+  }
+
+  async function makeSample() {
+    const info = await status();
+    return {
+      limits: async () => info.limits || null,
+      async json(prompt, opts = {}) {
+        const images = opts.images ? await Promise.all(opts.images.map(async (b) => ({ media_type: b.type || 'image/jpeg', data: await toB64(b) }))) : undefined;
+        let r;
+        try { r = await fetch(API, { method: 'POST', headers: headers(), body: JSON.stringify({ prompt, tier: opts.modelTier || 'default', images }) }); }
+        catch (e) { throw fail('error', 'network'); }
+        const body = await r.json().catch(() => null);
+        if (!r.ok) throw fail(r.status === 429 ? 'rate_limited' : r.status === 401 ? 'not_granted' : r.status === 503 ? 'unavailable' : 'error', body && body.error);
+        return body ? body.result : null;
+      }
+    };
+  }
+
+  window.claude = {
+    async use(name) {
+      if (name === 'downloads') return downloads;
+      if (name === 'sample') return makeSample();
+      throw fail('unavailable');
+    }
+  };
+})();
+</script>
+<script>
+/* ===== DDF core: model, CSV read/write, rules, checks (no DOM) ===== */
+const DDF = (() => {
+  const HEADER = 'Page_Title,Question_Title,Answer_Type,Options,Rules';
+  // Shufti's sample file shows ten types. Email is used by a live client form (ACU).
+  const TYPES = ['Text', 'Paragraph', 'Email', 'Date', 'Upload File', 'Radio Buttons', 'Drop Down',
+    'Multiple Select', 'Countries List', 'Float', 'Linear Scale'];
+  const OPTION_TYPES = ['Radio Buttons', 'Drop Down', 'Multiple Select'];
+  const ACTIONS = ['SHOW', 'HIDE', 'JUMP', 'SKIP'];
+  const QUESTION_LIMIT = 20;
+  const isQAction = (a) => a === 'SHOW' || a === 'HIDE';
+
+  let seq = 0;
+  const uid = (p) => p + Date.now().toString(36) + (seq++).toString(36) + Math.random().toString(36).slice(2, 6);
+
+  const newQuestion = (title = '', type = 'Text', options = []) => ({ id: uid('q'), title, type, options });
+  const newPage = (title = '') => ({ id: uid('p'), title, questions: [], rules: [] });
+  const newCond = (qid = '') => ({ id: uid('c'), join: 'AND', qid, qRaw: '', op: 'EQUAL', value: '' });
+  const newTarget = (id = '', raw = '') => ({ id, raw });
+  const newRule = () => ({ id: uid('r'), conds: [newCond()], action: 'SHOW', targets: [newTarget()] });
+  const newForm = (name = 'Untitled form') => ({ id: uid('f'), name, updated: Date.now(), pages: [] });
+
+  /* ---------- CSV ---------- */
+  function parseCSV(text, delim = ',') {
+    text = text.replace(/^﻿/, '');
+    const rows = []; let row = []; let f = ''; let q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+        else f += c;
+      } else if (c === '"') q = true;
+      else if (c === delim) { row.push(f); f = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(f); rows.push(row); row = []; f = '';
+      } else f += c;
+    }
+    if (f !== '' || row.length) { row.push(f); rows.push(row); }
+    return rows.filter(r => !(r.length === 1 && r[0] === ''));
+  }
+  const qt = (s) => '"' + String(s ?? '').replace(/"/g, '""') + '"';
+  // Options are separated by a bare comma. A comma followed by a space stays inside the option,
+  // as in ACU's "Pension (APC, AOV, ENNIA or else)" (inferred from that live form).
+  const splitOptions = (s) => s === '' ? [] : s.split(/,(?! )/).map(x => x.trim()).filter(Boolean);
+
+  // Split "A, B, C" into known names, where a name may itself contain ", ".
+  function splitKnown(str, known) {
+    const parts = str.split(', ');
+    const set = new Set(known);
+    const memo = new Map();
+    const go = (i) => {
+      if (i === parts.length) return [];
+      if (memo.has(i)) return memo.get(i);
+      let res = null;
+      for (let j = parts.length; j > i && !res; j--) {
+        const cand = parts.slice(i, j).join(', ');
+        if (set.has(cand)) { const rest = go(j); if (rest) res = [cand, ...rest]; }
+      }
+      memo.set(i, res); return res;
+    };
+    return go(0);
+  }
+
+  /* ---------- Rules ---------- */
+  const findQ = (page, id) => page.questions.find(q => q.id === id);
+  const condQTitle = (page, c) => { const q = findQ(page, c.qid); return q ? q.title : c.qRaw; };
+  function targetTitles(form, page, r) {
+    return r.targets.map(t => {
+      if (isQAction(r.action)) { const q = findQ(page, t.id); return q ? q.title : t.raw; }
+      const p = form.pages.find(p => p.id === t.id); return p ? p.title : t.raw;
+    });
+  }
+  const targetTitle = (form, page, r) => targetTitles(form, page, r).join(', ');
+  function ruleToString(form, page, r) {
+    let s = '';
+    r.conds.forEach((c, i) => {
+      if (i > 0) s += ' ;' + c.join + '; ';
+      s += condQTitle(page, c) + ', ' + c.op + ', ' + c.value;
+    });
+    return s + ' ;' + r.action + '; ' + targetTitle(form, page, r);
+  }
+  function parseRule(str) {
+    const m = str.match(/^(.*?)\s*;(SHOW|HIDE|JUMP|SKIP);\s*(.*)$/s);
+    if (!m) return null;
+    const parts = m[1].split(/\s*;(AND|OR);\s*/);
+    const conds = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      const cm = parts[i].match(/^(.*?),\s*(EQUAL|NOT_EQUAL),\s*(.*)$/s);
+      const c = newCond();
+      if (i > 0) c.join = parts[i - 1];
+      if (cm) { c.qRaw = cm[1].trim(); c.op = cm[2]; c.value = cm[3].trim(); }
+      else c.qRaw = parts[i].trim();
+      conds.push(c);
+    }
+    const r = newRule(); r.conds = conds; r.action = m[2]; r.targets = [newTarget('', m[3].trim())];
+    return r;
+  }
+
+  // Common misspellings of Shufti's answer types, matched without case, spaces or hyphens.
+  const TYPE_FIX = { dropdown: 'Drop Down', radio: 'Radio Buttons', radiobutton: 'Radio Buttons', radiobuttons: 'Radio Buttons',
+    multipleselect: 'Multiple Select', multiselect: 'Multiple Select', checkbox: 'Multiple Select', checkboxes: 'Multiple Select',
+    uploadfile: 'Upload File', fileupload: 'Upload File', upload: 'Upload File', countrieslist: 'Countries List', countrylist: 'Countries List',
+    linearscale: 'Linear Scale', text: 'Text', paragraph: 'Paragraph', email: 'Email', date: 'Date', float: 'Float' };
+  const normType = (t) => TYPES.includes(t) ? t : (TYPE_FIX[t.toLowerCase().replace(/[\s_-]+/g, '')] || t);
+
+  /* ---------- Import / export ---------- */
+  function fromCSV(text, name) {
+    text = String(text ?? '').replace(/^\uFEFF/, '');
+    if (!text.trim()) throw new Error('The file is empty.');
+    // Excel in Dutch or other European settings saves CSVs with ";" (or tabs) between columns.
+    const first = text.split(/\r?\n/, 1)[0].replace(/"/g, '');
+    const dm = first.match(/^\s*Page_Title\s*([;\t,])/i);
+    const delim = dm ? dm[1] : ',';
+    const rows = parseCSV(text, delim);
+    if (!rows.length) throw new Error('The file is empty.');
+    const head = rows[0].map(s => s.trim()).join(',');
+    if (head.toLowerCase() !== HEADER.toLowerCase()) throw new Error('This file does not start with the Shufti DDF header (' + HEADER + '). Check that it is a DDF CSV and not an Excel (.xlsx) file.');
+    const form = newForm(name || 'Imported form');
+    const note = (n) => { form.importNotes = (form.importNotes || []).concat(n); };
+    const fixNote = (n) => { form.importErrors = (form.importErrors || []).concat(n); };
+    if (delim !== ',') note(`The file used “${delim === '\t' ? 'tab' : delim}” between columns (as Excel does in some countries). The export uses commas, as Shufti’s template does.`);
+    let page = null; const ruleText = new Map();
+    rows.slice(1).forEach((r, i) => {
+      const [pt = '', qtl = '', at = '', op = '', ru = ''] = r;
+      if (r.every(x => !x.trim())) return; // blank line, e.g. ",,,," added by Excel
+      if (r.length !== 5) note(`Row ${i + 2} has ${r.length} columns instead of 5.`);
+      if (pt.trim() !== '') {
+        page = newPage(pt.trim()); form.pages.push(page);
+        if (ru.trim()) ruleText.set(page, ru);
+      } else {
+        if (!page) { page = newPage('Page 1'); form.pages.push(page); note('The first question came before any page, so it was put on a new page called “Page 1”.'); }
+        let type = at.trim() || 'Text';
+        const fixed = normType(type);
+        if (fixed !== type) { note(`Row ${i + 2}: the answer type “${type}” was changed to Shufti’s spelling “${fixed}”.`); type = fixed; }
+        page.questions.push(newQuestion(qtl.trim(), type, splitOptions(op)));
+        if (ru.trim()) { note(`Row ${i + 2}: a rule on a question row was moved to its page.`); ruleText.set(page, (ruleText.get(page) ? ruleText.get(page) + ' ||| ' : '') + ru); }
+      }
+    });
+    form.pages.forEach(p => {
+      const txt = ruleText.get(p); if (!txt) return;
+      txt.split(/\s*\|\|\|\s*/).forEach(s => {
+        if (!s.trim()) return;
+        const r = parseRule(s.trim());
+        if (!r) { fixNote(`A rule on “${p.title}” could not be read, so it is left out of the export: ${s}`); return; }
+        r.conds.forEach(c => { const q = p.questions.find(q => q.title === c.qRaw); if (q) { c.qid = q.id; c.qRaw = ''; } });
+        const raw = r.targets[0].raw;
+        if (isQAction(r.action)) {
+          const names = splitKnown(raw, p.questions.map(q => q.title));
+          if (names) r.targets = names.map(n => newTarget(p.questions.find(q => q.title === n).id, ''));
+        } else {
+          const t = form.pages.find(x => x.title === raw); if (t) r.targets = [newTarget(t.id, '')];
+        }
+        p.rules.push(r);
+      });
+    });
+    return form;
+  }
+
+  function toCSV(form) {
+    const lines = [HEADER];
+    form.pages.forEach(p => {
+      const rules = p.rules.map(r => ruleToString(form, p, r)).join(' ||| ');
+      lines.push([qt(p.title), qt(''), '', qt(''), qt(rules)].join(','));
+      p.questions.forEach(q => {
+        const opts = OPTION_TYPES.includes(q.type) || !TYPES.includes(q.type) ? q.options.join(',') : '';
+        lines.push([qt(''), qt(q.title), q.type, qt(opts), qt('')].join(','));
+      });
+    });
+    return lines.join('\n') + '\n';
+  }
+
+  /* ---------- Plain-English reading of a rule ---------- */
+  const short = (s, n = 70) => { s = String(s ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+  function describeRule(form, page, r) {
+    const parts = r.conds.map((c, i) => {
+      const t = short(condQTitle(page, c)) || '(no question)';
+      const v = c.value === '' ? '(blank)' : c.value;
+      return (i ? (c.join === 'AND' ? ' and ' : ' or ') : '') + '“' + t + '” ' + (c.op === 'EQUAL' ? 'is' : 'is not') + ' “' + v + '”';
+    }).join('');
+    const tt = targetTitles(form, page, r).map(t => '“' + (short(t) || '(none picked)') + '”');
+    const many = tt.length > 1;
+    const act = { SHOW: many ? 'show the questions' : 'show the question', HIDE: many ? 'hide the questions' : 'hide the question', JUMP: 'jump to the page', SKIP: 'skip the page' }[r.action];
+    return 'If ' + parts + ', ' + act + ' ' + tt.join(' and ') + '.';
+  }
+
+  /* ---------- Checks ---------- */
+  // level: 'error' = Shufti's format will break, a reference is missing, or the rule can never match
+  //        'warn'  = allowed, but not confirmed by Shufti, or likely a mistake worth testing
+  function check(form) {
+    const out = [];
+    const add = (level, msg, where) => out.push({ level, msg, where });
+    const total = form.pages.reduce((n, p) => n + p.questions.length, 0);
+    (form.importErrors || []).forEach(n => add('error', 'From the import: ' + n, {}));
+    (form.importNotes || []).forEach(n => add('warn', 'From the import: ' + n, {}));
+    if (!form.pages.length) add('error', 'The form has no pages yet.', {});
+    if (total > QUESTION_LIMIT) add('warn', `The form has ${total} questions. Shufti's default limit is ${QUESTION_LIMIT} per form, so check with Shufti support that the limit is raised for this client.`, {});
+    const pageTitles = new Map(); const qTitles = new Map();
+    form.pages.forEach((p, pi) => {
+      const w = { page: p.id };
+      if (!p.title.trim()) add('error', `Page ${pi + 1} has no title.`, w);
+      else { if (pageTitles.has(p.title.trim())) add('error', `Two pages are called “${p.title}”. Jump and skip rules find pages by title, so titles must be unique.`, w); pageTitles.set(p.title.trim(), 1); }
+      if (/;\s*(AND|OR|SHOW|HIDE|JUMP|SKIP)\s*;|\|\|\|/.test(p.title)) add('error', `Page “${p.title}” contains “|||” or a rule keyword such as “;AND;”, which Shufti uses inside rules.`, w);
+      if (!p.questions.length) add('warn', `Page “${p.title || pi + 1}” has no questions.`, w);
+      p.questions.forEach((q, qi) => {
+        const wq = { page: p.id, q: q.id };
+        const name = short(q.title, 60) || `question ${qi + 1}`;
+        if (!q.title.trim()) add('error', `A question on “${p.title}” has no title.`, wq);
+        else {
+          if (qTitles.has(q.title.trim())) add('warn', `“${name}” appears more than once. Rules find questions by title, so a repeated title can point a rule at the wrong one.`, wq);
+          qTitles.set(q.title.trim(), 1);
+        }
+        if (/;\s*(AND|OR|SHOW|HIDE|JUMP|SKIP)\s*;|\|\|\|/.test(q.title)) add('error', `“${name}” contains “|||” or a rule keyword such as “;AND;”, which Shufti uses inside rules.`, wq);
+        if (/,\s*(EQUAL|NOT_EQUAL)\s*,/.test(q.title)) add('error', `“${name}” contains text that looks like a rule condition.`, wq);
+        if (!TYPES.includes(q.type)) add('warn', `“${name}” uses the answer type “${q.type}”, which is not in Shufti's sample. Check the spelling with Shufti.`, wq);
+        if (OPTION_TYPES.includes(q.type)) {
+          if (q.options.length < 1) add('error', `“${name}” is ${q.type} and has no options.`, wq);
+          else if (q.options.length < 2 && q.type !== 'Radio Buttons') add('warn', `“${name}” has only one option.`, wq);
+          q.options.forEach(o => {
+            if (/,(?! )/.test(o)) add('error', `The option “${o}” of “${name}” contains a comma. Shufti separates options with commas, so it would split in two.`, wq);
+            else if (o.includes(', ')) add('warn', `The option “${o}” of “${name}” contains “, ”. Rules list several answers with “, ” too, so a rule on this option is ambiguous. Consider rewording it without commas.`, wq);
+          });
+          const seen = new Set(); q.options.forEach(o => { if (seen.has(o)) add('warn', `“${name}” lists the option “${o}” twice.`, wq); seen.add(o); });
+        }
+      });
+      const seenRules = new Map(); const msByQ = new Map(); const setSeen = new Map();
+      p.rules.forEach((r, ri) => {
+        const wr = { page: p.id, rule: r.id };
+        const label = `Rule ${ri + 1} on “${p.title}”`;
+        const str = ruleToString(form, p, r);
+        if (seenRules.has(str)) add('warn', `${label} is an exact copy of rule ${seenRules.get(str) + 1}. It can be deleted.`, wr);
+        else seenRules.set(str, ri);
+        const joins = new Set(r.conds.slice(1).map(c => c.join));
+        if (joins.size > 1) add('warn', `${label} mixes AND and OR. Shufti does not say which is applied first, so test this rule in Shufti.`, wr);
+        r.conds.forEach(c => {
+          const q = findQ(p, c.qid);
+          if (!q) { add('error', c.qRaw ? `${label} uses “${short(c.qRaw)}”, which is not a question on this page.` : `${label} has a condition with no question picked.`, wr); return; }
+          const qn = short(q.title, 60);
+          if (c.value === '') { add('warn', `${label} compares “${qn}” to a blank value.`, wr); return; }
+          if (q.type === 'Radio Buttons' || q.type === 'Drop Down') {
+            if (!q.options.includes(c.value)) {
+              const multi = splitKnown(c.value, q.options);
+              if (multi && multi.length > 1) add('error', `${label} checks “${qn}” for “${c.value}”, but ${q.type} allows only one answer, so this never matches. Use a separate rule for each answer, or join two conditions with OR.`, wr);
+              else add('error', `${label} checks “${qn}” for “${c.value}”, which is not one of its options, so it never matches.`, wr);
+            }
+          }
+          if (q.type === 'Multiple Select') {
+            if (!splitKnown(c.value, q.options)) add('error', `${label} checks “${qn}” for “${c.value}”, which is not made of its options.`, wr);
+            const n = (msByQ.get(q.id) || { q, rules: [] }); n.rules.push(ri + 1); msByQ.set(q.id, n);
+            const key = (splitKnown(c.value, q.options) || [c.value]).slice().sort().join('\u0000') + '|' + c.op + '|' + r.action + '|' + targetTitle(form, p, r);
+            if (r.conds.length === 1 && setSeen.has(key) && setSeen.get(key).str !== str) add('warn', `${label} ticks the same boxes as rule ${setSeen.get(key).n} in a different order. Keep both only if Shufti turns out to care about order.`, wr);
+            else if (r.conds.length === 1 && !setSeen.has(key)) setSeen.set(key, { n: ri + 1, str });
+          }
+          if (q.type === 'Upload File') add('warn', `${label} compares an uploaded file to a value. That is unlikely to work.`, wr);
+        });
+        if (isQAction(r.action)) {
+          r.targets.forEach(t => {
+            const q = findQ(p, t.id);
+            if (!q) add('error', t.raw ? `${label} targets “${short(t.raw)}”, which is not a question on this page.` : `${label} has a target with no question picked.`, wr);
+            else if (r.conds.some(c => c.qid === t.id)) add('error', `${label} shows or hides the same question it checks.`, wr);
+          });
+        } else {
+          const t = r.targets[0] || newTarget();
+          const ti = form.pages.findIndex(x => x.id === t.id);
+          if (ti < 0) add('error', t.raw ? `${label} targets the page “${t.raw}”, which does not exist.` : `${label} has no page to ${r.action.toLowerCase()} to.`, wr);
+          else if (ti <= pi) add('error', `${label} points at “${form.pages[ti].title}”, which is not a later page. Shufti's template only jumps or skips forward.`, wr);
+        }
+      });
+      // Shufti splits the question names inside a rule at every comma (confirmed by an ACU import error, 2026-10-06)
+      const commaQ = new Map(); const commaOpt = new Map();
+      const noteUse = (m, k, ri) => { const l = m.get(k) || []; if (!l.includes(ri + 1)) l.push(ri + 1); m.set(k, l); };
+      p.rules.forEach((r, ri) => {
+        r.conds.forEach(c => {
+          const q = findQ(p, c.qid); if (!q) return;
+          if (q.title.includes(',')) noteUse(commaQ, q.id, ri);
+          if ((q.type === 'Radio Buttons' || q.type === 'Drop Down') && c.value.includes(',') && q.options.includes(c.value)) noteUse(commaOpt, q.id + '\u0000' + c.value, ri);
+        });
+        if (isQAction(r.action)) r.targets.forEach(t => { const q = findQ(p, t.id); if (q && q.title.includes(',')) noteUse(commaQ, q.id, ri); });
+      });
+      const ruleList = (l) => (l.length === 1 ? 'rule ' : 'rules ') + l.join(', ');
+      commaQ.forEach((l, id) => add('error', `“${short(findQ(p, id).title, 60)}” is used in ${ruleList(l)} on “${p.title}”, and its title contains a comma. Shufti cuts question names in rules at each comma, so the import fails with “Rules reference unknown question”. Remove every comma from this title, for example write XCG 103.00 instead of XCG 103,00.`, { page: p.id, q: id }));
+      commaOpt.forEach((l, k) => { const [id, v] = k.split('\u0000'); add('error', `The option “${v}” of “${short(findQ(p, id).title, 60)}” is used in ${ruleList(l)} on “${p.title}”, and it contains a comma. Shufti cuts rule values at commas, so this rule breaks on import. Reword the option without commas, for example with “/”.`, { page: p.id, q: id }); });
+      msByQ.forEach(({ q, rules }) => add('warn', `${rules.length === 1 ? 'Rule ' + rules[0] + ' on “' + p.title + '” checks' : rules.length + ' rules on “' + p.title + '” check'} the multiple-select question “${short(q.title, 60)}”. Shufti has not documented how this matches. Live forms list every combination of ticked boxes, which suggests a rule matches only that exact combination (inferred), so test it in Shufti.`, { page: p.id, q: q.id }));
+      // the same answer both shows and hides a question
+      const condKey = (r) => r.conds.map(c => [c.join, c.qid || c.qRaw, c.op, c.value].join('|')).join('&');
+      p.rules.forEach((r, ri) => {
+        if (r.action !== 'SHOW') return;
+        p.rules.forEach((h, hi) => {
+          if (h.action !== 'HIDE' || condKey(h) !== condKey(r)) return;
+          r.targets.filter(t => t.id && h.targets.some(x => x.id === t.id)).forEach(t =>
+            add('error', `Rules ${ri + 1} and ${hi + 1} on “${p.title}” both show and hide “${short(findQ(p, t.id).title, 60)}” for the same answer.`, { page: p.id, rule: h.id }));
+        });
+      });
+    });
+    const seen = new Set();
+    return out.filter(i => { const k = i.level + i.msg; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+
+  return { HEADER, TYPES, OPTION_TYPES, ACTIONS, QUESTION_LIMIT, isQAction, uid, newQuestion, newPage, newCond, newRule, newTarget, newForm,
+    parseCSV, fromCSV, toCSV, splitKnown, splitOptions, ruleToString, parseRule, describeRule, check, targetTitle, targetTitles, condQTitle, short };
+})();
+
+
+</script>
+<script>
+const SAMPLE_CSV = "Page_Title,Question_Title,Answer_Type,Options,Rules\n\"Company Details\",\"\",,\"\",\"company name, EQUAL, abc ;OR; company name, EQUAL, ccc ;AND; Company Type, EQUAL, Trust ;JUMP; Bussiness Details ||| Company Type, NOT_EQUAL, Corporate ;SKIP; Area Details\"\n\"\",\"company name\",Text,\"\",\"\"\n\"\",\"Company Type\",Radio Buttons,\"Trust,Corporate,Fund,Private Ltd,Others\",\"\"\n\"Bussiness Details\",\"\",,\"\",\"Provide business's registered address, EQUAL, jnnjn ;SHOW; Please select payment method\"\n\"\",\"Provide business's registered address\",Text,\"\",\"\"\n\"\",\"Please select payment method\",Drop Down,\"Credit Card,Bank Transfer,PayPal,Debit Card\",\"\"\n\"Area Details\",\"\",,\"\",\"Brief company profile, EQUAL, paragraph good ;SHOW; Select date of incorporation ||| Select your area of business, EQUAL, Fintech ;HIDE; Upload Certificate of Incorporation\"\n\"\",\"Upload Certificate of Incorporation\",Upload File,\"\",\"\"\n\"\",\"Brief company profile\",Paragraph,\"\",\"\"\n\"\",\"Select your area of business\",Multiple Select,\"Fintech,Service Industry,Moving Industry,Finance and Banking,Others\",\"\"\n\"\",\"Select date of incorporation\",Date,\"\",\"\"\n\"Finance Details\",\"\",,\"\",\"Provide annual revenue, EQUAL, 1231 ;JUMP; Personal Information\"\n\"\",\"Provide annual revenue\",Float,\"\",\"\"\n\"\",\"Rate your financial stability\",Linear Scale,\"\",\"\"\n\"\",\"Select currency\",Countries List,\"\",\"\"\n\"\",\"Choose payment frequency\",Drop Down,\"Monthly,Quarterly,Semi-annually,Annually\",\"\"\n\"Communication Preferences\",\"\",,\"\",\"Provide primary contact number, EQUAL, knjn ;AND; Choose preferred contact method, EQUAL, Phone calls ;OR; Choose preferred contact method, EQUAL, Video conferences, Email ;HIDE; Opt-in for promotional emails\"\n\"\",\"Provide primary contact number\",Text,\"\",\"\"\n\"\",\"Choose preferred contact method\",Multiple Select,\"Email,Phone calls,Text messages,Video conferences,In-person meetings\",\"\"\n\"\",\"Specify preferred contact time\",Text,\"\",\"\"\n\"\",\"Opt-in for promotional emails\",Radio Buttons,\"Yes,No\",\"\"\n\"Personal Information\",\"\",,\"\",\"\"\n\"\",\"What is your full name\",Text,\"\",\"\"\n\"\",\"Provide date of birth\",Date,\"\",\"\"\n\"\",\"Upload a photo of yourself\",Upload File,\"\",\"\"\n\"\",\"Indicate gender\",Radio Buttons,\"Male,Female,Other\",\"\"\n";
+const TEST_CSV = "Page_Title,Question_Title,Answer_Type,Options,Rules\n\"Personal Details\",\"\",,\"\",\"What is your employment status?, EQUAL, Employed ;SHOW; What is the name of your employer? ||| What is your employment status?, EQUAL, Self-employed ;SHOW; What is the name of your business? ||| What is your employment status?, EQUAL, Retired ;SHOW; Which pension fund pays your pension? ||| What is your source of funds?, EQUAL, Inheritance ;SHOW; Please upload proof of the inheritance ||| What is your source of funds?, EQUAL, Other ;SHOW; Please describe your source of funds\"\n\"\",\"What is your employment status?\",Drop Down,\"Employed,Self-employed,Unemployed,Retired\",\"\"\n\"\",\"What is the name of your employer?\",Text,\"\",\"\"\n\"\",\"What is the name of your business?\",Text,\"\",\"\"\n\"\",\"Which pension fund pays your pension?\",Drop Down,\"APC,SVB,Other\",\"\"\n\"\",\"What is your source of funds?\",Drop Down,\"Salary,Business income,Pension,Investments,Inheritance,Other\",\"\"\n\"\",\"Please upload proof of the inheritance\",Upload File,\"\",\"\"\n\"\",\"Please describe your source of funds\",Paragraph,\"\",\"\"\n\"Risk Profile\",\"\",,\"\",\"What is your expected monthly transaction volume?, EQUAL, Under 5000 USD ;HIDE; Please upload a recent bank statement ||| Are you a Politically Exposed Person (PEP) or a close relative of one?, EQUAL, Yes ;SHOW; What public position do you or your relative hold? ||| Do you pay tax in a country other than your country of residence?, EQUAL, Yes ;SHOW; In which country do you also pay tax? ||| Do you pay tax in a country other than your country of residence?, EQUAL, Yes ;SHOW; What is your tax identification number (TIN) in that country? ||| Are you a Politically Exposed Person (PEP) or a close relative of one?, EQUAL, No ;AND; What is your expected monthly transaction volume?, NOT_EQUAL, Over 25000 USD ;SKIP; Enhanced Due Diligence\"\n\"\",\"What is your expected monthly transaction volume?\",Drop Down,\"Under 5000 USD,5000 to 25000 USD,Over 25000 USD\",\"\"\n\"\",\"Please upload a recent bank statement\",Upload File,\"\",\"\"\n\"\",\"Are you a Politically Exposed Person (PEP) or a close relative of one?\",Drop Down,\"No,Yes\",\"\"\n\"\",\"What public position do you or your relative hold?\",Text,\"\",\"\"\n\"\",\"Do you pay tax in a country other than your country of residence?\",Drop Down,\"No,Yes\",\"\"\n\"\",\"In which country do you also pay tax?\",Countries List,\"\",\"\"\n\"\",\"What is your tax identification number (TIN) in that country?\",Text,\"\",\"\"\n\"Enhanced Due Diligence\",\"\",,\"\",\"\"\n\"\",\"Please explain how you built up your wealth\",Paragraph,\"\",\"\"\n\"\",\"Please upload proof of your source of wealth\",Upload File,\"\",\"\"\n\"Declaration\",\"\",,\"\",\"\"\n\"\",\"I confirm that the information I provided is true and complete\",Radio Buttons,\"Yes\",\"\"\n";
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (k === 'value') n.value = v;
+    else if (k === 'checked') n.checked = !!v;
+    else n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(k));
+  return n;
+};
+
+/* ---------- state ---------- */
+const STORE = 'shufti-ddf-builder-v1';
+let lib = { forms: [], current: null };
+let selPage = null;
+let tab = 'chat';
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s && Array.isArray(s.forms) && s.forms.length) lib = s; } catch (e) {}
+  if (!lib.forms.length) { const f = DDF.fromCSV(SAMPLE_CSV, 'Example: Shufti sample form'); lib = { forms: [f], current: f.id }; }
+  if (!lib.forms.find(f => f.id === lib.current)) lib.current = lib.forms[0].id;
+}
+let saveT;
+function save() { form().updated = Date.now(); clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(STORE, JSON.stringify(lib)); } catch (e) {} }, 300); }
+const form = () => lib.forms.find(f => f.id === lib.current);
+const page = () => form().pages.find(p => p.id === selPage) || null;
+
+let toastT;
+function toast(msg) { let t = $('.toast'); if (!t) { t = el('div', { class: 'toast', role: 'status' }); document.body.append(t); } t.textContent = msg; clearTimeout(toastT); toastT = setTimeout(() => t.remove(), 2600); }
+
+/* two-click confirmation for destructive buttons */
+function confirmBtn(btn, label, fn) {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.armed) { fn(); return; }
+    const orig = btn.textContent; btn.dataset.armed = '1'; btn.textContent = label; btn.classList.add('confirm');
+    setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = orig; btn.classList.remove('confirm'); } }, 2500);
+  });
+}
+
+/* ---------- rendering ---------- */
+function renderAll() { renderFormBar(); renderSide(); renderMain(); }
+function refreshLight() { renderSide(); if (tab === 'csv') renderCsv(); refreshReads(); save(); }
+
+function renderFormBar() {
+  const f = form();
+  $('#formName').value = f.name;
+  const sel = $('#formLib'); sel.replaceChildren(...lib.forms.slice().sort((a, b) => b.updated - a.updated)
+    .map(x => el('option', { value: x.id, selected: x.id === f.id }, x.name || 'Untitled form')));
+  $('#btnDel').disabled = lib.forms.length < 2;
+}
+
+function issuesFor(where) { return currentIssues.filter(i => Object.entries(where).every(([k, v]) => i.where[k] === v)); }
+let currentIssues = [];
+function renderSide() {
+  const f = form();
+  currentIssues = DDF.check(f);
+  const total = f.pages.reduce((n, p) => n + p.questions.length, 0);
+  const lim = DDF.QUESTION_LIMIT;
+  const m = $('#meter'); m.className = 'meter' + (total > lim ? ' over' : '');
+  m.replaceChildren(el('div', { class: 'track' }, el('div', { class: 'fill', style: `width:${Math.min(100, total / lim * 100)}%` })),
+    el('p', {}, `${total} of ${lim} questions` + (total > lim ? ' · over Shufti’s default limit' : '')));
+  $('#pageCount').textContent = f.pages.length + (f.pages.length === 1 ? ' page' : ' pages');
+  $('#pageList').replaceChildren(...f.pages.map((p, i) => {
+    const iss = issuesFor({ page: p.id });
+    const lvl = iss.some(x => x.level === 'error') ? 'err' : iss.length ? 'warn' : null;
+    const flows = p.rules.filter(r => r.action === 'JUMP' || r.action === 'SKIP').length;
+    const sub = `${p.questions.length} question${p.questions.length === 1 ? '' : 's'} · ${p.rules.length} rule${p.rules.length === 1 ? '' : 's'}` + (flows ? ` · ${flows} jump/skip` : '');
+    return el('li', { class: p.id === selPage ? 'on' : '', tabindex: 0, onclick: () => selectPage(p.id), onkeydown: (e) => { if (e.key === 'Enter') selectPage(p.id); } },
+      el('span', { class: 'n' }, String(i + 1)),
+      el('span', { class: 't' }, el('b', {}, p.title || 'Untitled page'), el('small', {}, sub)),
+      lvl ? el('span', { class: 'dot ' + lvl, title: iss.length + ' check(s)' }) : el('span'));
+  }));
+  const errs = currentIssues.filter(i => i.level === 'error').length, warns = currentIssues.length - errs;
+  $('#counts').replaceChildren(el('span', { class: 'e' }, errs + ' to fix'), el('span', { class: 'w' }, warns + ' to test'));
+  $('#checks').replaceChildren(currentIssues.length
+    ? el('ul', { class: 'checks' }, currentIssues.map(i => el('li', { class: i.level, onclick: () => goTo(i.where) },
+        el('span', { class: 'tag' }, i.level === 'error' ? 'FIX' : 'TEST'), el('span', {}, i.msg))))
+    : el('p', { class: 'allgood' }, 'No problems found. This form matches Shufti’s template format.'));
+}
+
+function goTo(w) {
+  if (w.page) { tab = 'build'; selectPage(w.page); }
+  const id = w.q || w.rule; if (!id) return;
+  requestAnimationFrame(() => { const n = document.getElementById('x-' + id); if (n) { n.scrollIntoView({ block: 'center', behavior: 'smooth' }); n.classList.add('flash'); setTimeout(() => n.classList.remove('flash'), 1400); } });
+}
+function selectPage(id) { selPage = id; if (tab !== 'build') tab = 'build'; renderSide(); renderMain(); }
+
+function renderMain() {
+  $('#tabChat').classList.toggle('on', tab === 'chat'); $('#tabBuild').classList.toggle('on', tab === 'build'); $('#tabCsv').classList.toggle('on', tab === 'csv');
+  $('#viewChat').hidden = tab !== 'chat'; $('#viewBuild').hidden = tab !== 'build'; $('#viewCsv').hidden = tab !== 'csv';
+  if (tab === 'chat') renderChat(); else if (tab === 'build') renderBuild(); else renderCsv();
+}
+
+let building = false;
+function renderBuild() {
+  if (building) return; building = true;
+  try { buildView(); } finally { building = false; }
+}
+function buildView() {
+  const f = form(); const v = $('#viewBuild');
+  if (!f.pages.length) {
+    v.replaceChildren(el('div', { class: 'section' }, el('p', { class: 'empty' }, 'This form has no pages yet. A Shufti form is a series of pages, each holding questions. Add the first page to start.'),
+      el('div', {}, el('button', { class: 'btn primary', type: 'button', onclick: addPage }, '+ Add first page'))));
+    return;
+  }
+  if (!page()) selPage = f.pages[0].id;
+  const p = page(); const pi = f.pages.indexOf(p);
+
+  const title = el('input', { class: 'f title', id: 'pt-' + p.id, value: p.title, placeholder: 'Page title, e.g. Company Details', 'aria-label': 'Page title',
+    oninput: (e) => { p.title = e.target.value; refreshLight(); }, onchange: () => afterPointer(renderBuild) });
+  const up = el('button', { class: 'btn sm', type: 'button', disabled: pi === 0, onclick: () => movePage(p, -1) }, 'Move up');
+  const down = el('button', { class: 'btn sm', type: 'button', disabled: pi === f.pages.length - 1, onclick: () => movePage(p, 1) }, 'Move down');
+  const del = el('button', { class: 'btn sm danger', type: 'button' }, 'Delete page');
+  confirmBtn(del, 'Click again to delete', () => deletePage(p));
+
+  const qs = el('div', { class: 'section' },
+    el('h3', {}, el('span', {}, 'Questions'), el('span', { class: 'hint' }, p.questions.length + ' on this page',
+      p.rules.length ? [' · ', el('a', { href: '#rules', class: 'jump', onclick: (e) => { e.preventDefault(); document.getElementById('rules').scrollIntoView({ behavior: 'smooth' }); } }, `Go to ${p.rules.length} rule${p.rules.length === 1 ? '' : 's'}`)] : null)),
+    p.questions.length ? p.questions.map((q, i) => questionEl(p, q, i)) : el('p', { class: 'empty' }, 'No questions on this page yet.'),
+    el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', onclick: () => addQuestion(p) }, '+ Add question')));
+
+  const later = f.pages.slice(pi + 1);
+  const rs = el('div', { class: 'section', id: 'rules' },
+    el('h3', {}, el('span', {}, 'Rules for this page'), el('span', { class: 'hint' }, 'Conditions use questions on this page')),
+    p.rules.length ? p.rules.map((r, i) => ruleEl(f, p, r, i)) : el('p', { class: 'empty' }, p.questions.length
+      ? 'No rules. Add one to show or hide a question here, or to jump past or skip a later page based on an answer.'
+      : 'Add questions first. Rules on this page can only check answers to questions on this page.'),
+    el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', disabled: !p.questions.length, onclick: () => addRule(p) }, '+ Add rule'),
+      !later.length && p.questions.length ? el('span', { class: 'hint' }, 'This is the last page, so only Show and Hide are available.') : null));
+
+  v.replaceChildren(el('div', { class: 'pagehead' },
+    el('span', { class: 'eyebrow' }, `Page ${pi + 1} of ${f.pages.length}`),
+    el('div', { class: 'row' }, title, up, down, del)), qs, rs);
+  refreshReads();
+}
+
+const TYPE_NOTES = {
+  'Text': 'Short free-text answer.', 'Paragraph': 'Long free-text answer.', 'Date': 'Date picker.', 'Upload File': 'Document upload.',
+  'Countries List': 'Country picker supplied by Shufti. No options needed.', 'Float': 'Number with decimals.',
+  'Linear Scale': 'Rating scale. Shufti’s sample leaves the options empty, so this builder does too.'
+};
+// A text box commits its change when it loses focus, which happens on mousedown of the next button.
+// Re-rendering right then would replace that button before the click lands, so wait for the pointer.
+let pointerDown = false;
+document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+document.addEventListener('pointerup', () => { setTimeout(() => { pointerDown = false; }, 0); }, true);
+function afterPointer(fn) {
+  if (!pointerDown) return fn();
+  let done = false; const run = () => { if (!done) { done = true; fn(); } };
+  document.addEventListener('click', () => setTimeout(run, 0), { once: true, capture: true });
+  setTimeout(run, 600);
+}
+function questionEl(p, q, i) {
+  const needs = DDF.OPTION_TYPES.includes(q.type);
+  const title = el('textarea', { class: 'f qtitle', rows: 1, value: q.title, placeholder: 'Question, e.g. Company Type', 'aria-label': 'Question title',
+    oninput: (e) => { q.title = e.target.value; grow(e.target); refreshLight(); }, onchange: () => afterPointer(renderBuild) });
+  requestAnimationFrame(() => grow(title));
+  const type = el('select', { class: 'f', 'aria-label': 'Answer type', onchange: (e) => { q.type = e.target.value; renderBuild(); refreshLight(); } },
+    DDF.TYPES.map(t => el('option', { value: t, selected: t === q.type }, t)),
+    DDF.TYPES.includes(q.type) ? null : el('option', { value: q.type, selected: true }, q.type + ' (from import)'));
+  const opts = needs ? el('div', { class: 'opts' },
+    el('label', { for: 'o-' + q.id }, 'Options, one per line'),
+    el('textarea', { class: 'f', id: 'o-' + q.id, rows: Math.min(8, Math.max(3, q.options.length + 1)), value: q.options.join('\n'), placeholder: 'Trust\nCorporate\nFund',
+      onfocus: () => { q._before = q.options.slice(); },
+      oninput: (e) => { q.options = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); refreshLight(); },
+      onchange: () => { renameAnswers(p, q, q._before || [], q.options); delete q._before; afterPointer(() => { renderBuild(); refreshLight(); }); } }))
+    : el('p', { class: 'typenote' }, TYPE_NOTES[q.type] || '');
+  const up = el('button', { class: 'btn ghost sm', type: 'button', title: 'Move up', 'aria-label': 'Move question up', disabled: i === 0, onclick: () => moveQ(p, q, -1) }, '↑');
+  const dn = el('button', { class: 'btn ghost sm', type: 'button', title: 'Move down', 'aria-label': 'Move question down', disabled: i === p.questions.length - 1, onclick: () => moveQ(p, q, 1) }, '↓');
+  const del = el('button', { class: 'btn ghost sm danger', type: 'button', title: 'Delete question', 'aria-label': 'Delete question' }, '✕');
+  confirmBtn(del, 'Delete?', () => deleteQ(p, q));
+  return el('div', { class: 'q', id: 'x-' + q.id },
+    el('span', { class: 'num' }, String(i + 1)),
+    el('div', { class: 'body' }, el('div', { class: 'line' }, title, type), opts, movePick(p, q)),
+    el('div', { class: 'tools' }, up, dn, del));
+}
+
+function movePick(p, q) {
+  const f = form(); if (f.pages.length < 2) return null;
+  return el('label', { class: 'hint movepick' }, 'Page ',
+    el('select', { class: 'f sm', 'aria-label': 'Move to page', onchange: (e) => moveQToPage(p, q, e.target.value) },
+      f.pages.map(x => el('option', { value: x.id, selected: x.id === p.id }, cut(x.title, 40) || '(untitled)'))));
+}
+function moveQToPage(p, q, pid) {
+  const dest = form().pages.find(x => x.id === pid); if (!dest || dest === p) return;
+  let n = 0;
+  p.rules.forEach(r => { r.conds.forEach(c => { if (c.qid === q.id) { c.qid = ''; c.qRaw = q.title; n++; } }); if (DDF.isQAction(r.action)) r.targets.forEach(t => { if (t.id === q.id) { t.id = ''; t.raw = q.title; n++; } }); });
+  p.questions = p.questions.filter(x => x !== q); dest.questions.push(q);
+  renderAll(); save();
+  toast(n ? `Moved to “${dest.title}”. ${n} rule reference${n === 1 ? '' : 's'} on this page now need fixing, see Checks` : `Moved to “${dest.title}”`);
+}
+function grow(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; }
+// When an option is renamed in place, carry the new wording into this page's rules.
+function renameAnswers(p, q, before, after) {
+  if (before.length !== after.length) return;
+  const map = new Map(); before.forEach((o, i) => { if (o !== after[i]) map.set(o, after[i]); });
+  if (!map.size) return;
+  let n = 0;
+  p.rules.forEach(r => r.conds.forEach(c => {
+    if (c.qid !== q.id) return;
+    const parts = q.type === 'Multiple Select' ? (DDF.splitKnown(c.value, before) || [c.value]) : [c.value];
+    const next = parts.map(v => map.get(v) ?? v).join(', ');
+    if (next !== c.value) { c.value = next; n++; }
+  }));
+  if (n) toast(`Updated ${n} rule condition${n === 1 ? '' : 's'} to the new wording`);
+}
+const cut = (s, n = 90) => DDF.short(s, n);
+const ACTION_LABEL = { SHOW: 'Show question', HIDE: 'Hide question', JUMP: 'Jump to page', SKIP: 'Skip page' };
+function ruleEl(f, p, r, i) {
+  const pi = f.pages.indexOf(p); const later = f.pages.slice(pi + 1);
+  const qOpts = (cur, raw) => [el('option', { value: '' }, raw ? `Missing: ${cut(raw)}` : 'Pick a question…'),
+    ...p.questions.map(q => el('option', { value: q.id, selected: q.id === cur }, cut(q.title) || '(untitled question)'))];
+
+  const condEls = r.conds.map((c, ci) => {
+    const q = p.questions.find(x => x.id === c.qid);
+    const join = ci === 0 ? el('span', { class: 'kw' }, 'IF')
+      : el('select', { class: 'f join', 'aria-label': 'Combine with', onchange: (e) => { c.join = e.target.value; refreshLight(); renderBuild(); } },
+          ['AND', 'OR'].map(j => el('option', { value: j, selected: c.join === j }, j)));
+    const qsel = el('select', { class: 'f qsel', 'aria-label': 'Question', onchange: (e) => { c.qid = e.target.value; c.qRaw = ''; c.value = ''; renderBuild(); refreshLight(); } }, qOpts(c.qid, c.qRaw));
+    const op = el('select', { class: 'f op', 'aria-label': 'Comparison', onchange: (e) => { c.op = e.target.value; refreshLight(); } },
+      el('option', { value: 'EQUAL', selected: c.op === 'EQUAL' }, 'is'), el('option', { value: 'NOT_EQUAL', selected: c.op === 'NOT_EQUAL' }, 'is not'));
+    let val;
+    if (q && (q.type === 'Radio Buttons' || q.type === 'Drop Down')) {
+      const known = q.options.includes(c.value);
+      val = el('select', { class: 'f val', 'aria-label': 'Answer', onchange: (e) => { c.value = e.target.value; refreshLight(); } },
+        el('option', { value: '' }, 'Pick an answer…'),
+        !known && c.value ? el('option', { value: c.value, selected: true }, `Not an option: ${c.value}`) : null,
+        q.options.map(o => el('option', { value: o, selected: o === c.value }, o)));
+    } else if (q && q.type === 'Multiple Select') {
+      const picked = DDF.splitKnown(c.value, q.options) || c.value.split(',').map(s => s.trim()).filter(Boolean);
+      val = el('div', { class: 'val checks-in', role: 'group', 'aria-label': 'Answers' }, q.options.map(o => el('label', {},
+        el('input', { type: 'checkbox', checked: picked.includes(o), onchange: (e) => {
+          const set = q.options.filter(x => x === o ? e.target.checked : picked.includes(x)); picked.splice(0, picked.length, ...set);
+          c.value = set.join(', '); refreshLight(); } }), o)));
+    } else {
+      val = el('input', { class: 'f val', value: c.value, 'aria-label': 'Answer', placeholder: q && q.type === 'Date' ? 'Date as typed in Shufti' : 'Answer to compare with',
+        oninput: (e) => { c.value = e.target.value; refreshLight(); } });
+    }
+    const rm = r.conds.length > 1 ? el('button', { class: 'btn ghost sm', type: 'button', 'aria-label': 'Remove condition', onclick: () => { r.conds.splice(ci, 1); renderBuild(); refreshLight(); } }, '✕') : null;
+    return el('div', { class: 'cond' }, join, qsel, op, val, rm);
+  });
+
+  const acts = DDF.ACTIONS.filter(a => (a === 'SHOW' || a === 'HIDE') || later.length || r.action === a);
+  const act = el('select', { class: 'f act', 'aria-label': 'Action', onchange: (e) => {
+    const was = r.action; r.action = e.target.value;
+    if (DDF.isQAction(was) !== DDF.isQAction(r.action)) r.targets = [DDF.newTarget()];
+    renderBuild(); refreshLight(); } }, acts.map(a => el('option', { value: a, selected: a === r.action }, ACTION_LABEL[a])));
+  const isQ = r.action === 'SHOW' || r.action === 'HIDE';
+  const pool = isQ ? p.questions : later;
+  if (!isQ && r.targets.length > 1) r.targets = r.targets.slice(0, 1);
+  const tgtEls = r.targets.map((t, ti) => {
+    const known = pool.some(x => x.id === t.id);
+    const sel = el('select', { class: 'f tgt', 'aria-label': 'Target', onchange: (e) => { t.id = e.target.value; t.raw = ''; refreshLight(); } },
+      el('option', { value: '' }, t.raw ? `Missing: ${cut(t.raw)}` : isQ ? 'Pick a question on this page…' : 'Pick a later page…'),
+      !known && t.id && !isQ ? el('option', { value: t.id, selected: true }, 'Not a later page: ' + cut((f.pages.find(x => x.id === t.id) || {}).title || '')) : null,
+      pool.map(x => el('option', { value: x.id, selected: x.id === t.id }, cut(x.title) || '(untitled)')));
+    const rm = r.targets.length > 1 ? el('button', { class: 'btn ghost sm', type: 'button', 'aria-label': 'Remove this question', onclick: () => { r.targets.splice(ti, 1); renderBuild(); refreshLight(); } }, '✕') : null;
+    return el('div', { class: 'then' }, ti === 0 ? el('span', { class: 'kw' }, 'THEN') : el('span', { class: 'kw' }, '+'), ti === 0 ? act : el('span', { class: 'act also' }, r.action === 'SHOW' ? 'and show' : 'and hide'), sel, rm);
+  });
+  const addTgt = isQ ? el('div', {}, el('button', { class: 'btn sm', type: 'button', onclick: () => { r.targets.push(DDF.newTarget()); renderBuild(); refreshLight(); } }, r.action === 'SHOW' ? '+ Show another question' : '+ Hide another question')) : null;
+
+  const del = el('button', { class: 'btn ghost sm danger', type: 'button' }, 'Delete rule');
+  confirmBtn(del, 'Click again', () => { p.rules = p.rules.filter(x => x !== r); renderBuild(); refreshLight(); });
+  return el('div', { class: 'rule', id: 'x-' + r.id },
+    el('div', { class: 'rhead' }, el('span', { class: 'eyebrow' }, 'Rule ' + (i + 1)), del),
+    condEls,
+    el('div', {}, el('button', { class: 'btn sm', type: 'button', onclick: () => { const c = DDF.newCond(); c.join = r.conds[r.conds.length - 1].join || 'AND'; r.conds.push(c); renderBuild(); refreshLight(); } }, '+ Add condition')),
+    tgtEls, addTgt,
+    el('p', { class: 'reads', 'data-rule': r.id }));
+}
+function refreshReads() {
+  const f = form(), p = page(); if (!p) return;
+  document.querySelectorAll('.reads[data-rule]').forEach(n => {
+    const r = p.rules.find(x => x.id === n.dataset.rule); if (!r) return;
+    n.replaceChildren(DDF.describeRule(f, p, r), el('span', { class: 'code' }, DDF.ruleToString(f, p, r)));
+  });
+}
+
+function renderCsv() {
+  const f = form(); const csv = DDF.toCSV(f); const rows = DDF.parseCSV(csv);
+  const head = rows[0];
+  $('#viewCsv').replaceChildren(
+    el('div', { class: 'section' }, el('h3', {}, el('span', {}, 'What Shufti will receive'), el('span', { class: 'hint' }, `${rows.length - 1} rows · 5 columns`)),
+      el('p', { class: 'hint', style: 'margin:0' }, 'Pages are shaded. Every field is quoted except Answer Type, and lines end with a plain line break, matching Shufti’s sample file exactly.')),
+    el('div', { class: 'csvwrap' }, el('table', { class: 'csv' },
+      el('thead', {}, el('tr', {}, head.map(h => el('th', {}, h)))),
+      el('tbody', {}, rows.slice(1).map(r => el('tr', { class: r[0] ? 'prow' : '' }, r.map((c, i) => el('td', { class: i === 4 ? 'rules' : '' }, c))))))),
+    el('details', {}, el('summary', { class: 'section', style: 'cursor:pointer' }, 'Raw file text'), el('pre', { class: 'raw' }, csv)));
+}
+
+/* ---------- actions ---------- */
+function addPage() { const f = form(); const p = DDF.newPage('Page ' + (f.pages.length + 1)); f.pages.push(p); selPage = p.id; tab = 'build'; renderAll(); save(); requestAnimationFrame(() => { const t = document.getElementById('pt-' + p.id); if (t) { t.focus(); t.select(); } }); }
+function movePage(p, d) { const a = form().pages; const i = a.indexOf(p); a.splice(i, 1); a.splice(i + d, 0, p); renderAll(); save(); }
+function deletePage(p) {
+  const f = form();
+  f.pages.forEach(o => o.rules.forEach(r => { if (!DDF.isQAction(r.action)) r.targets.forEach(t => { if (t.id === p.id) { t.id = ''; t.raw = p.title; } }); }));
+  const i = f.pages.indexOf(p); f.pages.splice(i, 1); selPage = (f.pages[i] || f.pages[i - 1] || {}).id || null;
+  renderAll(); save(); toast(`Deleted “${p.title}”`);
+}
+function addQuestion(p) {
+  const q = DDF.newQuestion(''); p.questions.push(q); renderBuild(); refreshLight();
+  requestAnimationFrame(() => { const n = document.querySelector('#x-' + q.id + ' textarea'); if (n) n.focus(); });
+}
+function moveQ(p, q, d) { const i = p.questions.indexOf(q); p.questions.splice(i, 1); p.questions.splice(i + d, 0, q); renderBuild(); refreshLight(); }
+function deleteQ(p, q) {
+  p.rules.forEach(r => { r.conds.forEach(c => { if (c.qid === q.id) { c.qid = ''; c.qRaw = q.title; } }); if (DDF.isQAction(r.action)) r.targets.forEach(t => { if (t.id === q.id) { t.id = ''; t.raw = q.title; } }); });
+  p.questions = p.questions.filter(x => x !== q); renderBuild(); refreshLight();
+}
+function addRule(p) { const r = DDF.newRule(); p.rules.push(r); renderBuild(); refreshLight(); }
+
+function csvName() { return (form().name || 'ddf').replace(/^Example:\s*/, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') + '.csv'; }
+
+/* ---------- import dialog ---------- */
+function openImport() {
+  const errP = el('p', { class: 'err-text', hidden: true });
+  const ta = el('textarea', { class: 'f', id: 'importText', placeholder: DDF.HEADER + '\n"Company Details","",,"",""\n…' });
+  const nameIn = el('input', { class: 'f', id: 'importName', placeholder: 'Form name', style: 'width:100%' });
+  const file = el('input', { type: 'file', id: 'importFile', accept: '.csv,text/csv', onchange: async (e) => {
+    const fl = e.target.files[0]; if (!fl) return; ta.value = await fl.text(); if (!nameIn.value) nameIn.value = fl.name.replace(/\.csv$/i, ''); } });
+  const close = () => ov.remove();
+  const go = () => {
+    try {
+      const f = DDF.fromCSV(ta.value, nameIn.value.trim() || 'Imported form');
+      lib.forms.push(f); lib.current = f.id; selPage = f.pages[0] ? f.pages[0].id : null; close(); renderAll(); save();
+      toast(`Imported ${f.pages.length} page${f.pages.length === 1 ? '' : 's'}` + (f.importNotes ? ` · ${f.importNotes.length} note(s), see Checks` : ''));
+    } catch (err) { errP.hidden = false; errP.textContent = err.message; }
+  };
+  const ov = el('div', { class: 'overlay', onclick: (e) => { if (e.target === ov) close(); } },
+    el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'impH' },
+      el('h2', { id: 'impH' }, 'Import a DDF CSV'),
+      el('p', { class: 'hint', style: 'margin:0' }, 'Choose a CSV in Shufti’s format, or paste its text. It opens as a new form, and your other forms are kept.'),
+      file, nameIn, ta, errP,
+      el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'), el('button', { class: 'btn primary', type: 'button', onclick: go }, 'Import'))));
+  document.body.append(ov);
+  ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+}
+
+/* ---------- wiring ---------- */
+$('#tabChat').onclick = () => { tab = 'chat'; renderMain(); };
+$('#tabBuild').onclick = () => { tab = 'build'; renderMain(); };
+$('#tabCsv').onclick = () => { tab = 'csv'; renderMain(); };
+$('#btnAddPage').onclick = addPage;
+$('#formName').oninput = (e) => { form().name = e.target.value; save(); };
+$('#formName').onchange = () => renderFormBar();
+$('#formLib').onchange = (e) => { lib.current = e.target.value; selPage = null; renderAll(); save(); };
+$('#btnNew').onclick = () => { const f = DDF.newForm('New client form'); lib.forms.push(f); lib.current = f.id; selPage = null; tab = 'chat'; renderAll(); save(); };
+$('#btnTest').onclick = () => { const f = DDF.fromCSV(TEST_CSV, 'AXIOMA 5-question Shufti test'); lib.forms.push(f); lib.current = f.id; selPage = null; renderAll(); save(); toast('Loaded the 5-question test form'); };
+$('#btnSample').onclick = () => { const f = DDF.fromCSV(SAMPLE_CSV, 'Example: Shufti sample form'); lib.forms.push(f); lib.current = f.id; selPage = null; renderAll(); save(); toast('Loaded Shufti’s sample as a new form'); };
+$('#btnDup').onclick = () => { const f = DDF.fromCSV(DDF.toCSV(form()), form().name + ' (copy)'); lib.forms.push(f); lib.current = f.id; selPage = null; renderAll(); save(); toast('Duplicated'); };
+confirmBtn($('#btnDel'), 'Click again to delete', () => {
+  if (lib.forms.length < 2) return; const name = form().name;
+  lib.forms = lib.forms.filter(f => f.id !== lib.current); lib.current = lib.forms[0].id; selPage = null; renderAll(); save(); toast(`Deleted “${name}”`);
+});
+$('#btnImport').onclick = openImport;
+$('#btnPdf').onclick = openPdfImport;
+$('#btnCopy').onclick = async () => {
+  const csv = DDF.toCSV(form());
+  try { await navigator.clipboard.writeText(csv); toast('CSV copied. Paste it into a plain text file saved as .csv'); }
+  catch (e) { tab = 'csv'; renderMain(); const raw = $('#viewCsv details'); raw.open = true; const pre = $('#viewCsv pre'); const rg = document.createRange(); rg.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(rg); toast('Copy is blocked here. The text is selected, press Ctrl+C or Cmd+C'); }
+};
+let downloads = null;
+$('#btnDownload').onclick = async () => {
+  if (!downloads) return;
+  const errs = currentIssues.filter(i => i.level === 'error').length;
+  try { await downloads.save({ filename: csvName(), data: DDF.toCSV(form()) }); toast(errs ? `Saved, with ${errs} item(s) still to fix in Checks` : 'Saved'); }
+  catch (e) { if (e && e.code === 'declined') return; if (e && e.code === 'rate_limited') toast('A save prompt is already open'); else { $('#btnDownload').hidden = true; toast('Download isn’t available here. Use Copy CSV instead'); } }
+};
+
+/* ---------- Chat builder ---------- */
+// A guided conversation that adds pages, questions and rules to the current form.
+// Claude (the `sample` capability) only helps read free-text answers and suggest answer types;
+// every step also works with the buttons alone.
+let sampleFn = null;
+const chat = { formId: null, log: [], chips: [], handler: null, placeholder: '', busy: false, undo: [], pageId: null, notedShow: false, notedMulti: false };
+
+const TYPE_HELP = {
+  'Text': 'short typed answer', 'Paragraph': 'long typed answer', 'Email': 'email address', 'Date': 'date picker',
+  'Upload File': 'document upload', 'Radio Buttons': 'pick one, all choices visible', 'Drop Down': 'pick one from a list',
+  'Multiple Select': 'tick several', 'Countries List': 'country picker', 'Float': 'number', 'Linear Scale': 'rating scale'
+};
+const TYPE_ALIASES = {
+  'Text': ['text', 'short text', 'short answer', 'free text', 'textbox', 'text box', 'name'],
+  'Paragraph': ['paragraph', 'long text', 'long answer', 'essay', 'description', 'textarea'],
+  'Email': ['email', 'e-mail', 'mail'],
+  'Date': ['date', 'calendar', 'date picker', 'birthday', 'dob'],
+  'Upload File': ['upload', 'file', 'document', 'attachment', 'upload file', 'doc'],
+  'Radio Buttons': ['radio', 'radio button', 'radio buttons', 'yes no', 'yes/no', 'single choice', 'choose one', 'pick one'],
+  'Drop Down': ['dropdown', 'drop down', 'drop-down', 'select', 'list', 'menu'],
+  'Multiple Select': ['multiple', 'multi', 'multiple select', 'multi select', 'multiselect', 'checkbox', 'checkboxes', 'tick boxes', 'several', 'multiple choice'],
+  'Countries List': ['country', 'countries', 'countries list', 'country list', 'nationality'],
+  'Float': ['number', 'numeric', 'amount', 'float', 'decimal', 'figure'],
+  'Linear Scale': ['scale', 'linear scale', 'rating', 'rate', 'score']
+};
+
+// Answer types named in plain words. Stricter than TYPE_ALIASES, for reading corrections and edits.
+const TYPE_WORDS = [[/\bdrop[ -]?downs?\b|\bdropdowns?\b/i, 'Drop Down'], [/\bradio( buttons?)?\b/i, 'Radio Buttons'], [/\bmulti(ple)?[ -]?select\b|\bcheck ?box(es)?\b|\btick ?box(es)?\b/i, 'Multiple Select'],
+  [/\bcountr(y|ies)( list| picker)?\b/i, 'Countries List'], [/\bupload( file)?\b|\bfile upload\b/i, 'Upload File'], [/\bparagraph\b|\blong text\b/i, 'Paragraph'], [/\be-?mail\b/i, 'Email'],
+  [/\bdate( picker)?\b/i, 'Date'], [/\bnumber\b|\bfloat\b|\bnumeric\b/i, 'Float'], [/\blinear scale\b|\brating scale\b/i, 'Linear Scale'], [/\b(short )?text( box| field)?\b/i, 'Text']];
+function typeIn(text) { for (const [re, t] of TYPE_WORDS) if (re.test(text)) return t; return null; }
+// Split "A, B (C, D), E" on commas, semicolons and new lines, but not inside brackets.
+function splitList(text) {
+  const out = []; let cur = '', depth = 0;
+  for (const ch of String(text)) {
+    if (ch === '(' || ch === '[') depth++;
+    if ((ch === ')' || ch === ']') && depth) depth--;
+    if (!depth && (ch === ',' || ch === ';' || ch === '\n')) { out.push(cur); cur = ''; } else cur += ch;
+  }
+  out.push(cur);
+  return out.flatMap(x => x.split(/\s+\/\s+/)).map(x => x.trim()).filter(Boolean);
+}
+const capFirst = (t) => t ? t[0].toUpperCase() + t.slice(1) : t;
+function findQuestionByName(name) {
+  const n = norm(name).replace(/^(the )?(question )?/, '');
+  const all = form().pages.flatMap(p => p.questions.map(q => ({ q, p })));
+  if (/^(it|that|this|that one|the last one|last one|the last question)$/.test(n)) return all.find(x => x.q.id === chat.lastQ) || all[all.length - 1] || null;
+  return all.find(x => norm(x.q.title) === n) || all.find(x => norm(x.q.title).includes(n)) || all.find(x => n.includes(norm(x.q.title)) && norm(x.q.title).length > 3) || null;
+}
+// "rename X to Y", "change X to radio buttons", "delete X", "delete page X" in step-by-step mode.
+function parseEdit(text) {
+  const t = text.trim().replace(/[.!]+$/, '');
+  let m = t.match(/^(?:please\s+|can you\s+|could you\s+)?(?:delete|remove|drop|get rid of)\s+(?:the\s+)?page\s+["“]?(.+?)["”]?$/i);
+  if (m) return { kind: 'delpage', name: m[1] };
+  m = t.match(/^(?:please\s+|can you\s+|could you\s+)?(?:delete|remove|drop|get rid of)\s+(?:the\s+)?(?:question\s+)?["“]?(.+?)["”]?(?:\s+question)?$/i);
+  if (m) return { kind: 'delete', name: m[1] };
+  m = t.match(/^(?:please\s+|can you\s+|could you\s+)?(?:move|put)\s+(?:the\s+)?(?:question\s+)?["“]?(.+?)["”]?\s+(?:to|on|onto)\s+(?:the\s+)?(?:page\s+)?["“]?(.+?)["”]?(?:\s+page)?$/i);
+  if (m) return { kind: 'move', name: m[1], page: m[2] };
+  m = t.match(/^(?:please\s+|can you\s+|could you\s+)?(?:rename|reword|change|update|edit|make)\s+(?:the\s+)?(?:question\s+)?["“]?(.+?)["”]?\s+(?:to|into|so it says|so it reads|as)\s+["“]?(.+?)["”]?$/i);
+  if (m) {
+    const ty = typeIn(m[2]);
+    if (ty && m[2].replace(/\b(a|an|the|question|instead|answer|type)\b/gi, '').replace(TYPE_WORDS.find(x => x[1] === ty)[0], '').trim().length < 3) return { kind: 'type', name: m[1], type: ty };
+    return { kind: 'rename', name: m[1], to: m[2] };
+  }
+  return null;
+}
+function runEdit(ed, step) {
+  if (ed.kind === 'delpage') {
+    const f = form(); const pg = f.pages.find(p => norm(p.title) === norm(ed.name)) || f.pages.find(p => norm(p.title).includes(norm(ed.name)));
+    if (!pg) { say(`I couldn’t find a page called “${ed.name}”.`); return step ? step.repeat(true) : askQuestion(); }
+    snapshot('delete page'); f.pages = f.pages.filter(p => p !== pg);
+    f.pages.forEach(p => { p.rules = p.rules.filter(r => DDF.isQAction(r.action) || !r.targets.some(x => x.id === pg.id)); });
+    if (chat.pageId === pg.id) chat.pageId = null; changed();
+    say(`Deleted the page “${pg.title}” with its ${pg.questions.length} question${pg.questions.length === 1 ? '' : 's'}, and any jump or skip rules pointing at it. Say “undo” to bring it back.`);
+    return f.pages.length ? askQuestion() : askPageName(true);
+  }
+  const hit = findQuestionByName(ed.name);
+  if (!hit) { say(`I couldn’t find a question matching “${ed.name}”. Say “where are we” to see the questions.`); return step ? step.repeat(true) : askQuestion(); }
+  const { q, p } = hit;
+  if (ed.kind === 'delete') {
+    snapshot('delete question');
+    const before = p.rules.length;
+    p.rules = p.rules.filter(r => !r.conds.some(c => c.qid === q.id));
+    p.rules.forEach(r => { if (DDF.isQAction(r.action)) r.targets = r.targets.filter(x => x.id !== q.id); });
+    p.rules = p.rules.filter(r => r.targets.length);
+    p.questions = p.questions.filter(x => x !== q); chat.ctx = null; changed();
+    const gone = before - p.rules.length;
+    say(`Deleted “${DDF.short(q.title, 80)}”${gone ? ` and ${gone} rule${gone === 1 ? '' : 's'} that used it` : ''}. Say “undo” to bring it back.`);
+    return askQuestion();
+  }
+  if (ed.kind === 'move') {
+    const f = form(); const to = f.pages.find(x => norm(x.title) === norm(ed.page)) || f.pages.find(x => norm(x.title).includes(norm(ed.page)));
+    if (!to) { say(`I couldn’t find a page called “${ed.page}”.`); return askQuestion(); }
+    if (to === p) { say(`“${DDF.short(q.title, 60)}” is already on “${to.title}”.`); return askQuestion(); }
+    snapshot('move question');
+    const before = p.rules.length;
+    p.rules = p.rules.filter(r => !r.conds.some(c => c.qid === q.id) && !(DDF.isQAction(r.action) && r.targets.some(x => x.id === q.id)));
+    p.questions = p.questions.filter(x => x !== q); to.questions.push(q); chat.pageId = to.id; changed();
+    const gone = before - p.rules.length;
+    say(`Moved “${DDF.short(q.title, 60)}” to “${to.title}”.${gone ? ` ${gone} rule${gone === 1 ? '' : 's'} that linked it to questions on “${p.title}” ${gone === 1 ? 'was' : 'were'} removed, because rules only work within one page.` : ''}`);
+    return askQuestion();
+  }
+  if (ed.kind === 'move') {
+    const f = form(); const to = f.pages.find(x => norm(x.title) === norm(ed.page)) || f.pages.find(x => norm(x.title).includes(norm(ed.page)));
+    if (!to) { say(`I couldn’t find a page called “${ed.page}”.`); return askQuestion(); }
+    if (to === p) { say(`“${DDF.short(q.title, 60)}” is already on “${to.title}”.`); return askQuestion(); }
+    snapshot('move question');
+    const before = p.rules.length;
+    p.rules = p.rules.filter(r => !r.conds.some(c => c.qid === q.id) && !(DDF.isQAction(r.action) && r.targets.some(x => x.id === q.id)));
+    p.questions = p.questions.filter(x => x !== q); to.questions.push(q); chat.pageId = to.id; changed();
+    const gone = before - p.rules.length;
+    say(`Moved “${DDF.short(q.title, 60)}” to “${to.title}”.${gone ? ` ${gone} rule${gone === 1 ? '' : 's'} that linked it to questions on “${p.title}” ${gone === 1 ? 'was' : 'were'} removed, because rules only work within one page.` : ''}`);
+    return askQuestion();
+  }
+  if (ed.kind === 'rename') {
+    const to = tidyQuestion(ed.to);
+    if (/\|\|\||;\s*(AND|OR|SHOW|HIDE|JUMP|SKIP)\s*;/i.test(to)) { say('That wording contains “|||” or a rule keyword, which Shufti reserves for rules.'); return askQuestion(); }
+    snapshot('rename question'); const old = q.title; q.title = to; changed();
+    say(`Renamed “${DDF.short(old, 60)}” to “${DDF.short(to, 80)}”. Its rules use the new wording.`);
+    return askQuestion();
+  }
+  if (ed.kind === 'type') {
+    snapshot('change answer type'); const old = q.type; q.type = ed.type;
+    if (DDF.OPTION_TYPES.includes(ed.type) && !q.options.length) {
+      changed();
+      return ask(`“${DDF.short(q.title, 60)}” is now ${ed.type}. What should the options be? Separate them with commas.`, (txt) => {
+        const opts = [...new Set(splitList(txt))];
+        if (opts.length < (ed.type === 'Radio Buttons' ? 1 : 2)) { say(`A ${ed.type} needs at least two options.`); return runEdit(ed, step); }
+        q.options = opts; changed(); say(`Options set: ${opts.join(', ')}.`); askRule(q, p);
+      }, [], 'e.g. Yes, No');
+    }
+    if (!DDF.OPTION_TYPES.includes(ed.type)) { const used = p.rules.some(r => r.conds.some(c => c.qid === q.id)); if (used) say('Its rules still compare it to the old options, so check them under Checks.'); }
+    changed(); say(`Changed “${DDF.short(q.title, 60)}” from ${old} to ${ed.type}.`);
+    return askQuestion();
+  }
+}
+// "add name as text and date of birth as a date" -> several questions at once.
+function parseMulti(text) {
+  const t = text.trim().replace(/[.!]+$/, '').replace(/^(?:please\s+)?(?:add|create|include|i need|we need|i want|put in)\s+(?:questions?\s+(?:for|asking)\s+)?/i, '');
+  const segs = t.split(/\s*(?:,|;|\band\b|\balso\b|\bplus\b)\s*/i).map(x => x.trim()).filter(Boolean);
+  const out = [];
+  for (const sg of segs) {
+    const m = sg.match(/^(?:an?\s+|the\s+)?(.+?)\s+(?:as|with|using)\s+(?:an?\s+)?(.+?)(?:\s+(?:question|field|answer|type))?$/i);
+    if (!m) return null;
+    const ty = typeIn(m[2]); if (!ty || DDF.OPTION_TYPES.includes(ty)) return null;
+    out.push({ title: capFirst(m[1].replace(/^(?:a question\s+(?:for|asking)\s+)/i, '').trim()), type: ty });
+  }
+  return out.length >= 2 ? out : null;
+}
+function addMany(list) {
+  const p = curPage(); snapshot('add questions');
+  list.forEach(x => { const q = DDF.newQuestion(x.title, x.type, []); p.questions.push(q); chat.lastQ = q.id; });
+  changed();
+  const total = form().pages.reduce((n, x) => n + x.questions.length, 0);
+  say(`Added ${list.length} questions on “${p.title}”:\n${list.map(x => `• ${x.title} (${x.type})`).join('\n')}\nThe form now has ${total} questions. Say “rename …” or “change … to …” if any wording or type is off.`);
+  askQuestion();
+}
+function suggestLocal(title) {
+  const t = title.toLowerCase();
+  if (/\b(upload|attach|copy of|scan of|proof of|certificate)\b/.test(t)) return { type: 'Upload File', options: [] };
+  if (/e-?mail/.test(t)) return { type: 'Email', options: [] };
+  if (/\b(date|birth|dob)\b/.test(t)) return { type: 'Date', options: [] };
+  if (/\b(country|countries|nationality|citizenship)\b/.test(t)) return { type: 'Countries List', options: [] };
+  if (/\b(gender|sex)\b/.test(t)) return { type: 'Radio Buttons', options: ['Male', 'Female', 'Other'] };
+  if (/^(are|is|do|does|did|have|has|had|will|would|can|could|were|was|should)\b/.test(t)) return { type: 'Radio Buttons', options: ['Yes', 'No'] };
+  if (/(select all|all that apply|tick all|sources? of (funds|income|wealth))/.test(t)) return { type: 'Multiple Select', options: [] };
+  if (/\b(how much|how many|amount|revenue|turnover|volume|income in|number of|percentage|value of)\b|\((usd|eur|xcg|ang)\)/.test(t)) return { type: 'Float', options: [] };
+  if (/\b(rate|rating|scale)\b/.test(t)) return { type: 'Linear Scale', options: [] };
+  if (/\b(describe|explain|details|tell us|description|why|purpose)\b/.test(t)) return { type: 'Paragraph', options: [] };
+  if (/^(which|what type|what kind|select|choose)\b|\b(status|type of|kind of|category)\b/.test(t)) return { type: 'Drop Down', options: [] };
+  return { type: 'Text', options: [] };
+}
+
+const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// Match typed text to one of the offered choices. Returns the choice or null.
+function matchChoice(text, choices) {
+  const n = norm(text); if (!n) return null;
+  const keys = (c) => [c.label, c.value, ...(c.aliases || [])].filter(x => typeof x === 'string').map(norm);
+  let hit = choices.filter(c => keys(c).includes(n));
+  if (hit.length === 1) return hit[0];
+  hit = choices.filter(c => keys(c).some(k => k && (k.startsWith(n) || n.startsWith(k))));
+  if (hit.length === 1) return hit[0];
+  hit = choices.filter(c => keys(c).some(k => k && k.length > 2 && (n.includes(k) || k.includes(n))));
+  return hit.length === 1 ? hit[0] : null;
+}
+async function askClaudeJSON(prompt) {
+  if (!sampleFn) return null;
+  chat.busy = true; renderChat();
+  chat.lastError = null;
+  try { return await sampleFn.json(prompt, { modelTier: 'quick' }); }
+  catch (e) { chat.lastError = (e && e.code) || 'error'; if (['not_granted', 'unavailable', 'capability_disabled', 'capability_removed'].includes(e && e.code)) sampleFn = null; return null; }
+  finally { chat.busy = false; renderChat(); }
+}
+// Local match first; if that fails and Claude is available, ask Claude which choice the text means.
+async function interpret(text, choices, question) {
+  const local = matchChoice(text, choices); if (local) return local;
+  const res = await askClaudeJSON(`A person is answering a question in a form-building chat.\nQuestion: ${question}\nAllowed choices: ${JSON.stringify(choices.map(c => c.label))}\nTheir reply: ${JSON.stringify(text)}\nWhich allowed choice did they mean? Reply with only JSON like {"choice": "<one allowed choice exactly as written>"} or {"choice": null} if it is unclear.`);
+  return res && res.choice ? choices.find(c => c.label === res.choice) || null : null;
+}
+const yesNo = [{ label: 'Yes', value: true, aliases: ['y', 'yes please', 'sure', 'ok', 'yep', 'correct', 'right'] }, { label: 'No', value: false, aliases: ['n', 'nope', 'no thanks', 'none', 'skip'] }];
+
+/* --- understanding free-form requests --- */
+const optionQs = (p) => p.questions.filter(q => DDF.OPTION_TYPES.includes(q.type));
+function tidyQuestion(s) {
+  s = String(s).trim().replace(/^[:\-\s]+/, '').replace(/^["“'‘]+|["”'’]+$/g, '').trim();
+  if (!s) return s;
+  s = s[0].toUpperCase() + s.slice(1);
+  if (!/[?.!:]$/.test(s) && /^(what|where|when|which|who|whom|whose|why|how|are|is|do|does|did|have|has|will|would|can|could|were|was|should)\b/i.test(s)) s += '?';
+  return s;
+}
+// "if someone chooses Employed, then ask 'Where are you employed'" → {answer, question}
+function parseFollowUp(text) {
+  const t = text.replace(/\s+/g, ' ').trim();
+  const who = /\b(someone|somebody|anyone|they|the (person|applicant|user|client|customer)|people|a user|an applicant|the answer)\b/i;
+  const pick = /\b(choose|chooses|chose|chosen|select|selects|selected|pick|picks|picked|answer|answers|answered|say|says|tick|ticks|ticked)\b/i;
+  const next = /\b(next|follow[- ]?up|another|extra|additional|new|second)\b.{0,20}\bquestions?\b/i;
+  const pop = /\b(pop(s|ping)? up|appear|appears|show up|shows up|ask|asks|asking|then)\b/i;
+  const isFU = (who.test(t) && pick.test(t) && (pop.test(t) || next.test(t))) || (next.test(t) && pick.test(t) && pop.test(t));
+  if (!isFU) return null;
+  let answer = null, question = null;
+  const qm = [...t.matchAll(/["“]([^"”]{2,})["”]/g)];
+  if (qm.length) question = qm[qm.length - 1][1];
+  else { const am = t.match(/\b(?:asking|asks|ask|question)\s*:?\s+(?:them\s+|him\s+|her\s+)?(.{3,})$/i); if (am && !/\b(choose|chooses|select|pick)\b/i.test(am[1])) question = am[1]; }
+  const cm = t.match(/\b(?:choose|chooses|chose|selects?|selected|picks?|picked|answers?|answered|says|ticks?|ticked)\s+(?:the\s+)?(?:option\s+|answer\s+)?["“'‘]?([^"”'’,]+?)["”'’]?(?=\s+(?:from|in|on|as|then|for)\b|,|\.|\s+a\s+next|$)/i);
+  if (cm) answer = cm[1].trim();
+  return { answer, question: question ? tidyQuestion(question) : null };
+}
+function localCommand(text) {
+  const n = norm(text);
+  if (/^(undo|undo that|go back|undo last( change)?)$/.test(n)) return 'undo';
+  if (/^(i m done|im done|done|finish|finished|that s all|thats all|all done)$/.test(n)) return 'done';
+  if (/^(new page|add (a )?(new )?page|start (a )?new page|next page)$/.test(n)) return 'newpage';
+  if (/^(help|what can i (say|do))$/.test(n) || /^\s*\?+\s*$/.test(text)) return 'help';
+  const m = n.match(/^(?:go to|switch to|open|work on|move to|continue on|add (?:more )?questions to|add to|back to)\s+(?:the\s+)?(?:page\s+)?(.+?)(?:\s+page)?$/);
+  if (m) { const pg = form().pages.find(p => norm(p.title) === m[1]) || form().pages.find(p => norm(p.title).includes(m[1])); if (pg) return { page: pg.id }; }
+  return null;
+}
+function formSummary() {
+  const p = curPage(); if (!p) return 'The form has no pages yet.';
+  const f = form();
+  return `Pages: ${f.pages.map(x => JSON.stringify(x.title)).join(', ')}. Current page: ${JSON.stringify(p.title)}. Questions on it:\n` +
+    (p.questions.map(q => `- ${JSON.stringify(q.title)} [${q.type}]${q.options.length ? ' options: ' + q.options.join(' | ') : ''}`).join('\n') || '- none yet') +
+    (chat.ctx ? `\nQuestion being added right now (not saved yet): ${JSON.stringify(chat.ctx.title)}${chat.ctx.type ? ' [' + chat.ctx.type + ']' : ''}${chat.ctx.options ? ' options: ' + chat.ctx.options.join(' | ') : ''}` : '');
+}
+async function classify(text, stepText, choices) {
+  return askClaudeJSON(`You are the assistant inside a chat that builds a Shufti Due Diligence Form (KYC/KYB onboarding form).\n${formSummary()}\n\nThe chat just asked: ${JSON.stringify(stepText)}${choices.length ? '\nButtons offered: ' + JSON.stringify(choices.map(c => c.label)) : ''}\nThe user replied: ${JSON.stringify(text)}\n\nWork out what they want. Reply with only JSON:\n{"intent": "choice" | "follow_up" | "new_page" | "done" | "undo" | "new_question" | "unclear", "choice": "<one button label exactly, or null>", "follow_up": {"parent": "<exact title of an existing question or of the question being added, or null>", "answer": "<one of that question's options, or null>", "question": "<the follow-up question as the applicant should read it, or null>", "type": "<one of ${DDF.TYPES.join(', ')}, or null>"}, "new_question": "<question text or null>", "reply": "<one short friendly sentence if unclear, or null>"}\n"follow_up" means they want a question that only appears after a certain answer to another question. "choice" means their reply picks one of the buttons.`);
+}
+// Called with typed text before a step interprets it. Returns true when it handled the message.
+async function intercept(text, step) {
+  if (isStatusQuery(text) && text.length < 90) { say(formOverview()); step.repeat(true); return true; }
+  const cmd = localCommand(text);
+  if (cmd) { runCommand(cmd, step); return true; }
+  if (!sampleFn) {
+    const ed = parseEdit(text);
+    if (ed && (ed.kind === 'delpage' || findQuestionByName(ed.name))) { runEdit(ed, step); return true; }
+    const many = step && step.question && parseMulti(text);
+    if (many) { addMany(many); return true; }
+  }
+  const spec = !sampleFn && step && step.question && parseQuestionSpec(text);
+  if (spec && spec.type && spec.options.length >= 2) return false; // a full question spec, not a follow-up
+  const fu = parseFollowUp(text);
+  if (fu) { startFollowUp(fu); return true; }
+  return false;
+}
+function runCommand(cmd, step) {
+  if (cmd && cmd.page) { chat.pageId = cmd.page; say(`Now working on “${curPage().title}”.`); return askQuestion(); }
+  if (cmd === 'undo') return undoChat();
+  if (cmd === 'done') return finish();
+  if (cmd === 'newpage') {
+    const pc = chat.ctx;
+    if (!pc) return askPageName(false);
+    const ready = pc.type && (!DDF.OPTION_TYPES.includes(pc.type) || (pc.options && pc.options.length));
+    return askPageName(false, (p) => ready ? chatAddQuestion(pc, p) : (say(`“${DDF.short(pc.title, 60)}” will go on “${p.title}”.`), step && step.repeat()));
+  }
+  if (cmd === 'help') { say('You can click a button or type things like:\n• “if someone picks Employed, ask Where are you employed?”\n• “add name as text and date of birth as a date”\n• “rename Your name to Full legal name”\n• “change Income to a dropdown”\n• “delete the question Income”\n• “move Company name to Company documents”\n• “go to page Company documents” or “new page”\n• “where are we”, “undo” or “I’m done”'); return step && step.repeat(); }
+}
+function helpFallback(step, reply) {
+  say((reply ? reply + '\n' : 'I’m not sure what you mean here. ') + 'Pick one of the buttons, or tell me what you want, for example “if someone picks Employed, ask Where are you employed?”, “new page”, “undo” or “I’m done”.');
+  step.repeat(true);
+}
+
+/* --- chat primitives --- */
+function bot(text, chips = [], { placeholder = 'Type your answer…', handler, free = true } = {}) {
+  chat.log.push({ who: 'bot', text }); chat.chips = chips; chat.handler = handler || null; chat.placeholder = placeholder; chat.free = free; renderChat();
+}
+function say(text) { chat.log.push({ who: 'bot', text }); }
+function me(text) { chat.log.push({ who: 'me', text }); }
+function snapshot(label) { chat.undo.push({ label, json: JSON.stringify(form()) }); if (chat.undo.length > 30) chat.undo.shift(); }
+function changed() { save(); renderSide(); }
+function curPage() { const f = form(); return f.pages.find(p => p.id === chat.pageId) || f.pages[f.pages.length - 1] || null; }
+// Ask with buttons; typed text is interpreted against the same buttons.
+function choose(text, choices, onPick, opts = {}) {
+  const step = { repeat: (quiet) => quiet ? choose('', choices, onPick, opts) : choose(text, choices, onPick, opts) };
+  const show = (t) => t ? bot(t, choices.map(c => ({ label: c.label, value: c })), { placeholder: opts.placeholder || 'Click an option or type it', handler }) : (chat.chips = choices.map(c => ({ label: c.label, value: c })), chat.handler = handler, renderChat());
+  async function handler(inp) {
+    if (inp.chip) return onPick(inp.chip);
+    if (opts.pre) { const c = opts.pre(inp.text); if (c) return onPick(c); }
+    if (await intercept(inp.text, step)) return;
+    const local = matchChoice(inp.text, choices); if (local) return onPick(local);
+    if (sampleFn) {
+      const r = await classify(inp.text, text, choices);
+      if (r) {
+        if (r.intent === 'choice' && r.choice) { const c = choices.find(x => x.label === r.choice); if (c) return onPick(c); }
+        if (r.intent === 'follow_up' && r.follow_up) return startFollowUp(fromClaudeFU(r.follow_up));
+        if (['new_page', 'done', 'undo'].includes(r.intent)) return runCommand(r.intent === 'new_page' ? 'newpage' : r.intent, step);
+        if (r.intent === 'new_question' && r.new_question && !chat.ctx) return handleQuestionText(r.new_question);
+        return helpFallback(step, r.reply);
+      }
+    }
+    helpFallback(step);
+  }
+  show(text);
+}
+function ask(text, onText, chips = [], placeholder, opts = {}) {
+  const step = { question: !!opts.question, repeat: (quiet) => ask(quiet ? '' : text, onText, chips, placeholder, opts) };
+  const handler = async (inp) => {
+    if (!inp.chip && !opts.raw && await intercept(inp.text, step)) return;
+    return onText(inp.text, inp.chip);
+  };
+  if (text) bot(text, chips, { placeholder, handler }); else { chat.chips = chips; chat.handler = handler; chat.placeholder = placeholder || chat.placeholder; renderChat(); }
+}
+function fromClaudeFU(x) {
+  const fu = { answer: x.answer || null, question: x.question ? tidyQuestion(x.question) : null, type: DDF.TYPES.includes(x.type) ? x.type : null };
+  if (x.parent) { const q = form().pages.flatMap(p => p.questions).find(q => q.title === x.parent); if (q) fu.parentId = q.id; }
+  return fu;
+}
+
+/* --- flow --- */
+function startChat() {
+  if (sampleFn) return agentStart();
+  const f = form(); chat.formId = f.id; chat.log = []; chat.undo = []; chat.notedShow = false; chat.notedMulti = false;
+  chat.pageId = (f.pages[f.pages.length - 1] || {}).id || null;
+  const qn = f.pages.reduce((n, p) => n + p.questions.length, 0);
+  if (!f.pages.length) {
+    say('Hi. I’ll build this DDF with you one question at a time. Tell me each question, and I’ll ask what kind of answer it needs, which page it goes on and whether it needs a rule. You can click the buttons or just type.');
+    return askFormName();
+  }
+  say(`You’re working on “${f.name}”: ${f.pages.length} page${f.pages.length === 1 ? '' : 's'}, ${qn} question${qn === 1 ? '' : 's'}. New questions go on “${curPage().title}” unless you pick another page.`);
+  askQuestion();
+}
+function askFormName() {
+  const f = form();
+  ask('What should this form be called? Usually the client’s name, like “ACU Onboarding”.', (text, chip) => {
+    if (!chip) { snapshot('rename form'); f.name = text.trim() || f.name; renderFormBar(); changed(); }
+    askPageName(true);
+  }, [{ label: `Keep “${f.name}”`, value: 'keep' }], 'Form name');
+}
+function askPageName(first, then) {
+  ask(first ? 'What’s the first page called? For example “Company Details” or “Personal Information”.' : 'What should the new page be called?', (text) => {
+    const title = text.trim();
+    if (!title) return askPageName(first, then);
+    const f = form();
+    if (f.pages.some(p => p.title.trim().toLowerCase() === title.toLowerCase())) { say('There’s already a page with that name. Page names must be different, because jump and skip rules find pages by name.'); return askPageName(first, then); }
+    snapshot('add page'); const p = DDF.newPage(title); f.pages.push(p); chat.pageId = p.id; changed();
+    say(`Added the page “${title}”.`);
+    (then || askQuestion)(p);
+  }, [], 'Page name');
+}
+function askQuestion() {
+  const p = curPage();
+  chat.ctx = null;
+  ask(`What’s the next question for “${p.title}”? Type it exactly as the applicant should see it. You can also describe a follow-up, like “if someone picks Employed, ask Where are you employed?”`, async (text, chip) => {
+    if (chip === 'newpage') return askPageName(false);
+    if (chip === 'done') return finish();
+    if (chip && chip.page) { chat.pageId = chip.page; return askQuestion(); }
+    return handleQuestionText(text);
+  }, [...form().pages.filter(x => x !== p && !x.questions.length).slice(0, 3).map(x => ({ label: `Add questions to “${DDF.short(x.title, 30)}”`, value: { page: x.id } })),
+    { label: '+ New page', value: 'newpage' }, { label: 'I’m done', value: 'done' }], 'e.g. What type of company are you?', { question: true });
+}
+function parseQuestionSpec(text) {
+  const t = text.trim();
+  const instr = /^(please\s+)?(add|create|make|put|include|insert|i need|we need|i want|ask)\b|\bas an? (drop ?-?down|radio|multiple|multi|checkbox|text|date|upload|email|number)\b|\bdrop ?-?down (answer|question|option)/i.test(t);
+  if (!instr) return null;
+  let type = null;
+  const tm = t.match(/\b(drop ?-?down|radio(?: buttons?)?|multiple select|multi(?:ple)?[ -]?select|checkbox(?:es)?|tick ?boxes|paragraph|long text|date|upload|email|number|countries|country list)\b/i);
+  if (tm) type = (matchChoice(tm[1], DDF.TYPES.map(x => ({ label: x, value: x, aliases: TYPE_ALIASES[x] }))) || {}).value || null;
+  let options = [];
+  const om = t.match(/\b(?:if|whether)\s+(?:the\s+(?:person|applicant|client|user)|they|he or she|he\/she|someone)\s+(?:is|are|has|have|was)\s+(.+?)(?:\s+as\s+an?\b.*|\s+in\s+an?\b.*|[.?]?$)/i) || t.match(/\b(?:options?|choices?|answers?)\s*(?:are|:)\s*(.+?)[.?]?$/i);
+  if (om) {
+    let parts = om[1].split(/\s*,\s*|\s+or\s+|\s+and\s+|\s*\/\s*/).map(s => s.trim().replace(/^(an?|the)\s+/i, '')).filter(Boolean);
+    // "employed unemployed or retired": no commas, so split the words before "or" too
+    if (!/,/.test(om[1]) && parts.length >= 2 && parts.every(x => x.split(' ').length <= 3)) parts = parts.flatMap(x => x.split(' '));
+    options = parts.map(s => s[0].toUpperCase() + s.slice(1));
+  }
+  if (options.length >= 2 && !type) type = 'Drop Down';
+  const topics = [[/employ|retire/i, 'What is your employment status?'], [/married|single|divorc|widow/i, 'What is your marital status?'], [/\b(male|female|gender)\b/i, 'What is your gender?']];
+  const guess = (topics.find(([re]) => re.test(options.join(' ') + ' ' + t)) || [])[1] || null;
+  const qm = t.match(/["“]([^"”]+)["”]/);
+  return { title: qm ? tidyQuestion(qm[1]) : null, guess, type, options };
+}
+async function handleQuestionText(text) {
+    let title = text.trim(); if (!title) return askQuestion();
+    if (!sampleFn) title = capFirst(title);
+    const spec = !sampleFn && parseQuestionSpec(title);
+    if (spec) {
+      const go = (t) => {
+        const ctx = { title: t, sug: { type: spec.type || suggestLocal(t).type, options: spec.options } };
+        chat.ctx = ctx;
+        if (spec.type && (!DDF.OPTION_TYPES.includes(spec.type) || spec.options.length >= (spec.type === 'Radio Buttons' ? 1 : 2))) {
+          ctx.type = spec.type; ctx.options = DDF.OPTION_TYPES.includes(spec.type) ? spec.options : undefined;
+          say(`Got it: “${t}” as a ${ctx.type}${ctx.options ? ' with ' + ctx.options.join(', ') : ''}.`);
+          return askPageFor(ctx);
+        }
+        askType(ctx);
+      };
+      if (spec.title) return go(spec.title);
+      if (spec.guess && spec.options.length >= 2) return go(spec.guess);
+      return ask('What exact wording should the applicant see for this question?', (t2, chip) => go(tidyQuestion(chip || t2)), spec.guess ? [{ label: spec.guess, value: spec.guess }] : [], 'e.g. What is your employment status?', { raw: true });
+    }
+    if (/\|\|\||;\s*(AND|OR|SHOW|HIDE|JUMP|SKIP)\s*;/i.test(title)) { say('That wording contains “|||” or a word between semicolons like “;AND;”, which Shufti reserves for rules. Please reword it.'); return askQuestion(); }
+    const dup = form().pages.some(pg => pg.questions.some(q => q.title.trim() === title));
+    let sug = suggestLocal(title); let cleanTitle = title;
+    if (sampleFn) {
+      const r = await askClaudeJSON(`You help build a Shufti Due Diligence Form (a KYC/KYB onboarding form).\n${formSummary()}\nThe user typed this for a new question: ${JSON.stringify(title)}\nIf they are instead describing a follow-up question that should only appear after a certain answer to an existing question, reply with only JSON {"follow_up": {"parent": "<exact existing question title>", "answer": "<one of its options>", "question": "<follow-up question>", "type": "<answer type or null>"}}.\nOtherwise reply with only JSON: {"title": string, "type": string, "options": string[]}\n- title: the question as the applicant reads it. Keep the user's wording. Only strip instructions to you, such as "add a dropdown asking". Do not use the characters "|||".\n- type: exactly one of ${JSON.stringify(DDF.TYPES)}\n- options: only for Radio Buttons, Drop Down or Multiple Select. Use options the user gave; otherwise suggest short sensible ones. No commas inside an option. Otherwise [].`);
+      if (r && r.follow_up) return startFollowUp(fromClaudeFU(r.follow_up));
+      if (r && DDF.TYPES.includes(r.type)) {
+        sug = { type: r.type, options: Array.isArray(r.options) ? r.options.map(String).map(s => s.replace(/,/g, ' ').trim()).filter(Boolean) : [] };
+        if (typeof r.title === 'string' && r.title.trim() && !/\|\|\|/.test(r.title)) cleanTitle = r.title.trim();
+      }
+    }
+    const ctx = { title: cleanTitle, sug };
+    if (cleanTitle !== title) say(`I’ll use this wording: “${cleanTitle}”.`);
+    if (dup) return choose('There’s already a question with exactly that wording. Rules find questions by wording, so it’s safer to make it different. Use it anyway?',
+      [{ label: 'Use it anyway', value: 'use' }, { label: 'Reword it', value: 'reword' }], (c) => c.value === 'use' ? askType(ctx) : askQuestion());
+    askType(ctx);
+}
+function askType(ctx) {
+  chat.ctx = ctx;
+  const types = [ctx.sug.type, ...DDF.TYPES.filter(t => t !== ctx.sug.type)];
+  const choices = types.map((t, i) => ({ label: t, value: t, aliases: TYPE_ALIASES[t], hint: i === 0 ? 'suggested' : TYPE_HELP[t] }));
+  choose(`What kind of answer does “${DDF.short(ctx.title, 80)}” need? I’d suggest ${ctx.sug.type} (${TYPE_HELP[ctx.sug.type]}).`, choices, (c) => {
+    ctx.type = c.value;
+    if (DDF.OPTION_TYPES.includes(ctx.type)) askOptions(ctx); else askPageFor(ctx);
+  });
+}
+function askOptions(ctx) {
+  const chips = [];
+  if (ctx.sug.options.length) chips.push({ label: 'Use: ' + ctx.sug.options.join(' / '), value: ctx.sug.options });
+  else if (ctx.type === 'Radio Buttons') chips.push({ label: 'Use: Yes / No', value: ['Yes', 'No'] });
+  ask(`What should the options be for this ${ctx.type} question? Separate them with commas or put each on a new line.`, (text, chip) => {
+    const ty = !chip && typeIn(text);
+    if (ty && (/\b(make it|change (it )?to|should be|instead|actually|rather|switch|wrong|no,? )/i.test(text) || splitList(text).length === 1)) {
+      ctx.type = ty;
+      say(`OK, ${ty} instead.`);
+      return DDF.OPTION_TYPES.includes(ty) ? askOptions(ctx) : askPageFor(ctx);
+    }
+    let opts = chip || splitList(text);
+    opts = [...new Set(opts)];
+    if (!opts.length || (opts.length < 2 && ctx.type !== 'Radio Buttons')) { say(`A ${ctx.type} needs at least two options.`); return askOptions(ctx); }
+    if (opts.some(o => /\|\|\||;/.test(o))) { say('Options can’t contain “;” or “|||”. Please retype them.'); return askOptions(ctx); }
+    ctx.options = opts; askPageFor(ctx);
+  }, chips, 'e.g. Trust, Corporate, Fund');
+}
+function askPageFor(ctx) {
+  const f = form(); const cur = curPage();
+  if (f.pages.length === 1) { say(`It goes on “${cur.title}”. Say “new page” first if you want it somewhere else.`); return chatAddQuestion(ctx, cur); }
+  // The question was asked for the current page, so it goes there. Moving it is one message away.
+  if (cur) return chatAddQuestion(ctx, cur);
+  const pages = [cur, ...f.pages.filter(p => p !== cur)];
+  const choices = pages.map(p => ({ label: p.title, value: p.id })).concat({ label: '+ New page', value: '__new', aliases: ['new page', 'a new page'] });
+  choose(`Which page does it go on?`, choices, (c) => {
+    if (c.value === '__new') return askPageName(false, (p) => chatAddQuestion(ctx, p));
+    chatAddQuestion(ctx, f.pages.find(p => p.id === c.value));
+  }, { pre: (t) => /\b(not|no|don'?t|doesn'?t|never)\b.*\b(another|new|other|different)\b.*\bpage\b|\b(same|this|current|that) page\b|\bstay(s)?\b/i.test(t) ? choices[0] : null });
+}
+function chatAddQuestion(ctx, p) {
+  snapshot('add question');
+  const q = DDF.newQuestion(ctx.title, ctx.type, ctx.options || []); p.questions.push(q); chat.pageId = p.id; chat.lastQ = q.id; chat.ctx = null; changed();
+  const total = form().pages.reduce((n, x) => n + x.questions.length, 0);
+  say(`Added “${DDF.short(q.title, 80)}” as ${q.type}${q.options.length ? ' (' + q.options.join(', ') + ')' : ''} on “${p.title}”${form().pages.length > 1 ? ' (say “move it to page …” to put it elsewhere)' : ''}. The form now has ${total} question${total === 1 ? '' : 's'}${total > DDF.QUESTION_LIMIT ? `, which is over Shufti’s default limit of ${DDF.QUESTION_LIMIT}` : ''}.`);
+  if (chat.pending) { const fu = chat.pending; chat.pending = null; if (!fu.parentId && q.options.length) fu.parentId = q.id; return runFollowUp(fu); }
+  askRule(q, p);
+}
+function askRule(q, p, skipFollow) {
+  if (!skipFollow && q.options.length && q.type !== 'Multiple Select') {
+    return choose(`Should any of these answers bring up a follow-up question? Pick the answer, or say no.`,
+      q.options.map(o => ({ label: o, value: o })).concat({ label: 'No follow-ups', value: '__none', aliases: ['no', 'none', 'nope', 'no follow ups', 'no follow-up'] }, { label: 'A different rule (show, hide, jump or skip)', value: '__rule', aliases: ['rule', 'other rule', 'jump', 'skip'] }),
+      (c) => c.value === '__none' ? askQuestion() : c.value === '__rule' ? ruleEffect(q, p) : runFollowUp({ parentId: q.id, answer: c.value }));
+  }
+  const others = p.questions.filter(x => x !== q);
+  const choices = [];
+  if (others.length) choices.push({ label: 'Show it only after a certain answer', value: 'when', aliases: ['only show', 'only for', 'conditional', 'show only', 'depends'] });
+  if (q.options.length) choices.push({ label: 'Add a follow-up question for one of its answers', value: 'follow', aliases: ['follow up', 'followup', 'next question', 'pop up', 'sub question'] });
+  choices.push({ label: 'Its answer should show, hide, jump or skip something', value: 'effect', aliases: ['its answer', 'jump', 'skip', 'hide', 'show something'] });
+  choices.push({ label: 'No rule', value: 'none', aliases: ['no', 'none', 'nope', 'no rule', 'skip it', 'next'] });
+  choose('Does this question need a rule?', choices, (c) => {
+    if (c.value === 'none') return askQuestion();
+    if (c.value === 'when') return ruleWhen(q, p);
+    if (c.value === 'follow') return runFollowUp({ parentId: q.id });
+    ruleEffect(q, p);
+  });
+}
+function pickQuestion(text, p, exclude, onPick) {
+  const qs = p.questions.filter(x => !exclude.includes(x));
+  choose(text, qs.map(x => ({ label: DDF.short(x.title, 60), value: x.id, aliases: [x.title] })), (c) => onPick(p.questions.find(x => x.id === c.value)));
+}
+function ruleWhen(q, p) {
+  const r = DDF.newRule(); r.conds = []; r.action = 'SHOW'; r.targets = [DDF.newTarget(q.id)];
+  pickQuestion('Which question’s answer decides whether it shows? It has to be on the same page.', p, [q], (cq) => addCond(r, p, cq, 'AND', () => moreConds(r, p, q)));
+}
+function ruleEffect(q, p) {
+  const r = DDF.newRule(); r.conds = []; r.targets = [];
+  addCond(r, p, q, 'AND', () => askAction(r, p, q));
+}
+function addCond(r, p, cq, join, next) {
+  const c = DDF.newCond(cq.id); c.join = join;
+  const afterValue = (value) => {
+    c.value = value;
+    choose(`Should the rule apply when “${DDF.short(cq.title, 60)}” is “${value}”, or when it is not?`,
+      [{ label: `is “${DDF.short(value, 40)}”`, value: 'EQUAL', aliases: ['is', 'equal', 'equals', 'yes'] }, { label: `is not “${DDF.short(value, 40)}”`, value: 'NOT_EQUAL', aliases: ['is not', 'not', 'not equal', 'isnt'] }],
+      (o) => { c.op = o.value; r.conds.push(c); next(); });
+  };
+  if (cq.type === 'Radio Buttons' || cq.type === 'Drop Down') {
+    choose(`Which answer to “${DDF.short(cq.title, 60)}”?`, cq.options.map(o => ({ label: o, value: o })), (o) => afterValue(o.value));
+  } else if (cq.type === 'Multiple Select') {
+    if (!chat.notedMulti) { chat.notedMulti = true; say('A note on multiple-select: Shufti hasn’t documented how these rules match. Live forms list every combination of ticked boxes, which suggests a rule fires only when exactly those boxes are ticked. Test it in Shufti.'); }
+    ask(`Which boxes? Click one, or type several separated by commas (${cq.options.join(', ')}).`, (text, chip) => {
+      if (chip) return afterValue(chip);
+      const picked = text.split(/,|\n/).map(s => matchChoice(s, cq.options.map(o => ({ label: o, value: o })))).filter(Boolean).map(x => x.value);
+      if (!picked.length) { say('I couldn’t match that to the options.'); return addCond(r, p, cq, join, next); }
+      afterValue([...new Set(picked)].join(', '));
+    }, cq.options.map(o => ({ label: o, value: o })), 'e.g. Fintech, Others');
+  } else if (cq.type === 'Upload File') {
+    say('An uploaded file can’t be compared to an answer, so pick a different question for the condition.');
+    pickQuestion('Which question should the rule check instead?', p, [cq], (x) => addCond(r, p, x, join, next));
+  } else {
+    ask(`What answer to “${DDF.short(cq.title, 60)}” should it check for? Type it exactly.`, (text) => text.trim() ? afterValue(text.trim()) : addCond(r, p, cq, join, next), [], 'Exact answer');
+  }
+}
+const ACTION_CHOICES = [
+  { label: 'Show a question', value: 'SHOW', aliases: ['show', 'display', 'reveal'] },
+  { label: 'Hide a question', value: 'HIDE', aliases: ['hide', 'remove question'] },
+  { label: 'Jump to a later page', value: 'JUMP', aliases: ['jump', 'go to', 'goto', 'send to'] },
+  { label: 'Skip a later page', value: 'SKIP', aliases: ['skip', 'leave out', 'skip page'] }];
+function askAction(r, p, q) {
+  choose('What should happen?', ACTION_CHOICES, (a) => { r.action = a.value; askTarget(r, p, q); });
+}
+function askTarget(r, p, q) {
+  const f = form();
+  if (DDF.isQAction(r.action)) {
+    const used = r.conds.map(c => c.qid);
+    const pool = p.questions.filter(x => !used.includes(x.id) && !r.targets.some(t => t.id === x.id));
+    if (!pool.length) {
+      if (r.targets.length) return moreConds(r, p, q);
+      say(`There are no other questions on “${p.title}” to ${r.action.toLowerCase()} yet. Add the question first, then choose “Show it only after a certain answer” for it.`);
+      return askQuestion();
+    }
+    const verb = r.action === 'SHOW' ? 'show' : 'hide';
+    choose(`Which question should it ${verb}? It has to be on the same page.`, pool.map(x => ({ label: DDF.short(x.title, 60), value: x.id, aliases: [x.title] })), (c) => {
+      r.targets.push(DDF.newTarget(c.value));
+      choose(`Should it ${verb} another question too?`, yesNo, (y) => y.value ? askTarget(r, p, q) : moreConds(r, p, q));
+    });
+  } else {
+    const pi = f.pages.indexOf(p); const later = f.pages.slice(pi + 1);
+    const choices = later.map(x => ({ label: x.title, value: x.id })).concat({ label: '+ New page', value: '__new', aliases: ['new', 'new page'] });
+    const toNew = (np) => { chat.pageId = p.id; r.targets = [DDF.newTarget(np.id)]; moreConds(r, p, q); };
+    if (!later.length) { say(`There are no pages after “${p.title}” yet, so let’s add the page it should ${r.action === 'JUMP' ? 'jump to' : 'skip'}.`); return askPageName(false, toNew); }
+    choose(`Which later page should it ${r.action === 'JUMP' ? 'jump to' : 'skip'}?`, choices, (c) => {
+      if (c.value === '__new') return askPageName(false, (np) => { chat.pageId = p.id; r.targets = [DDF.newTarget(np.id)]; moreConds(r, p, q); });
+      r.targets = [DDF.newTarget(c.value)]; moreConds(r, p, q);
+    });
+  }
+}
+function moreConds(r, p, q) {
+  const joins = new Set(r.conds.slice(1).map(c => c.join));
+  const choices = [
+    { label: 'Also check another answer (AND: both must match)', value: 'AND', aliases: ['and', 'both'] },
+    { label: 'Or another answer (OR: either one)', value: 'OR', aliases: ['or', 'either'] },
+    { label: 'No, save the rule', value: 'save', aliases: ['no', 'save', 'done', 'nope'] }];
+  say('Here’s the rule so far:\n' + DDF.describeRule(form(), p, r));
+  choose('Should it also check another answer?', choices, (c) => {
+    if (c.value === 'save') return saveRule(r, p, q);
+    if (joins.size && !joins.has(c.value)) say('Heads up: mixing AND with OR in one rule is allowed, but Shufti doesn’t say which is applied first. Two separate rules are safer.');
+    pickQuestion('Which question should it check? It has to be on the same page.', p, r.targets.map(t => p.questions.find(x => x.id === t.id)).filter(Boolean),
+      (cq) => addCond(r, p, cq, c.value, () => moreConds(r, p, q)));
+  });
+}
+function saveRule(r, p, q) {
+  snapshot('add rule'); p.rules.push(r); changed();
+  say('Saved: ' + DDF.describeRule(form(), p, r) + '\nShufti will receive: ' + DDF.ruleToString(form(), p, r));
+  if (r.action === 'SHOW' && !chat.notedShow) { chat.notedShow = true; say('Note: Shufti hasn’t confirmed that a question named in a Show rule stays hidden until the rule fires. Live forms rely on it, but it’s worth a test.'); }
+  const issues = DDF.check(form()).filter(i => i.where.rule === r.id && i.level === 'error');
+  if (issues.length) say('This rule has a problem to fix in the Checks panel: ' + issues[0].msg);
+  choose('Does this question need another rule?', yesNo, (y) => y.value ? askRule(q, p) : askQuestion());
+}
+function finish() {
+  if (chat.ctx && chat.ctx.title) { say(`I left out “${DDF.short(chat.ctx.title, 60)}”, because it wasn’t finished. Say it again if you want it.`); chat.ctx = null; }
+  const f = form(); const iss = DDF.check(f); const errs = iss.filter(i => i.level === 'error').length;
+  const qn = f.pages.reduce((n, p) => n + p.questions.length, 0), rn = f.pages.reduce((n, p) => n + p.rules.length, 0);
+  say(`All set. “${f.name}” has ${f.pages.length} page${f.pages.length === 1 ? '' : 's'}, ${qn} question${qn === 1 ? '' : 's'} and ${rn} rule${rn === 1 ? '' : 's'}. ` +
+    (errs ? `${errs} item${errs === 1 ? '' : 's'} in the Checks panel ${errs === 1 ? 'needs' : 'need'} fixing before Shufti will accept it.` : 'Nothing needs fixing, so it matches Shufti’s format.'));
+  nextMenu();
+}
+function nextMenu() {
+  const chips = [];
+  if (downloads) chips.push({ label: 'Download CSV', value: 'dl' });
+  chips.push({ label: 'Copy CSV', value: 'copy' }, { label: 'See the CSV', value: 'csv' }, { label: 'Add more questions', value: 'more' });
+  ask('What next?', (text, chip) => {
+    const v = chip || (matchChoice(text, chips) || {}).value;
+    if (v === 'dl') { $('#btnDownload').click(); return nextMenu(); }
+    if (v === 'copy') { $('#btnCopy').click(); return nextMenu(); }
+    if (v === 'csv') { tab = 'csv'; renderMain(); return; }
+    askQuestion();
+  }, chips);
+}
+function undoChat() {
+  const u = chat.undo.pop(); if (!u) return;
+  const f = JSON.parse(u.json); const i = lib.forms.findIndex(x => x.id === f.id); if (i < 0) return;
+  lib.forms[i] = f; renderFormBar(); changed();
+  if (!f.pages.find(p => p.id === chat.pageId)) chat.pageId = (f.pages[f.pages.length - 1] || {}).id || null;
+  say(`Undone: ${u.label}.`);
+  if (!f.pages.length) return askPageName(true);
+  askQuestion();
+}
+
+/* --- rendering --- */
+function renderChat() {
+  const v = $('#viewChat'); if (!v || tab !== 'chat') return;
+  if (chat.formId !== lib.current) startChat();
+  let log = $('#chatLog'), chips = $('#chatChips'), inp = $('#chatInput');
+  if (!log) {
+    const head = el('div', { class: 'chathead' },
+      el('div', {}, el('b', {}, 'Chat builder'), el('span', { class: 'hint', id: 'chatMode' })),
+      el('div', { class: 'bar' },
+        el('button', { class: 'btn sm', type: 'button', id: 'chatUndo', onclick: undoChat }, 'Undo last change'),
+        el('button', { class: 'btn sm', type: 'button', onclick: () => { chat.formId = null; renderChat(); } }, 'Restart chat')));
+    log = el('div', { class: 'chatlog', id: 'chatLog', 'aria-live': 'polite' });
+    chips = el('div', { class: 'chips', id: 'chatChips' });
+    inp = el('textarea', { class: 'f', id: 'chatInput', rows: 1, 'aria-label': 'Your answer' });
+    const send = el('button', { class: 'btn primary', type: 'submit', id: 'chatSend' }, 'Send');
+    const formEl = el('form', { class: 'chatform', onsubmit: (e) => { e.preventDefault(); sendChat(); } }, inp, send);
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+    inp.addEventListener('input', () => grow(inp));
+    v.replaceChildren(head, log, chips, formEl);
+  }
+  $('#chatMode').textContent = sampleFn ? ' · Claude reads your messages and edits the form' : ' · Step-by-step mode: click the buttons or type';
+  $('#chatUndo').disabled = !chat.undo.length;
+  log.replaceChildren(...chat.log.map(m => el('div', { class: 'msg ' + m.who }, m.text)),
+    ...(chat.busy ? [el('div', { class: 'msg bot thinking' }, 'Thinking…')] : []));
+  chips.replaceChildren(...(chat.busy ? [] : chat.chips.map(c => el('button', { class: 'chip', type: 'button', onclick: () => pickChip(c) },
+    c.label, c.value && c.value.hint ? el('small', {}, c.value.hint) : null))));
+  inp.placeholder = chat.placeholder; inp.disabled = chat.busy; $('#chatSend').disabled = chat.busy;
+  log.scrollTop = log.scrollHeight;
+}
+async function pickChip(c) {
+  if (chat.busy || !chat.handler) return;
+  me(c.label); const h = chat.handler; chat.handler = null; chat.chips = [];
+  renderChat(); await h({ chip: c.value, text: c.label });
+}
+async function sendChat() {
+  const inp = $('#chatInput'); const text = inp.value.trim();
+  if (!text || chat.busy || !chat.handler) return;
+  inp.value = ''; grow(inp); me(text); const h = chat.handler; chat.handler = null; chat.chips = [];
+  renderChat(); await h({ text });
+  inp.focus();
+}
+
+/* --- follow-up questions: "if someone picks X, ask Y" --- */
+function startFollowUp(fu) {
+  const pc = chat.ctx;
+  if (pc) {
+    const ready = pc.type && (!DDF.OPTION_TYPES.includes(pc.type) || (pc.options && pc.options.length));
+    chat.pending = fu;
+    if (!ready) {
+      say(`Got it. I’ll add that follow-up question as soon as “${DDF.short(pc.title, 60)}” is set up.`);
+      if (!pc.type) return askType(pc);
+      return askOptions(pc);
+    }
+    say(`Got it. I’ve put “${DDF.short(pc.title, 60)}” on “${curPage().title}” (you can move it later in the Build tab), and now we’ll set up the follow-up question.`);
+    return chatAddQuestion(pc, curPage());
+  }
+  runFollowUp(fu);
+}
+function findParent(fu) {
+  const f = form(); const p = curPage();
+  const all = f.pages.flatMap(pg => pg.questions.map(q => ({ q, pg })));
+  if (fu.parentId) return all.find(x => x.q.id === fu.parentId) || null;
+  const withOpt = (list) => list.filter(x => DDF.OPTION_TYPES.includes(x.q.type));
+  const byAnswer = (list) => fu.answer ? list.filter(x => matchChoice(fu.answer, x.q.options.map(o => ({ label: o, value: o })))) : [];
+  const last = all.find(x => x.q.id === chat.lastQ);
+  if (last && withOpt([last]).length && (!fu.answer || byAnswer([last]).length)) return last;
+  const here = withOpt(all.filter(x => x.pg === p));
+  let hit = byAnswer(here); if (hit.length === 1) return hit[0];
+  hit = byAnswer(withOpt(all)); if (hit.length === 1) return hit[0];
+  if (here.length === 1) return here[0];
+  return null;
+}
+function runFollowUp(fu) {
+  const found = findParent(fu);
+  if (!found) {
+    const p = curPage(); const cands = p ? optionQs(p) : [];
+    if (!cands.length) {
+      chat.pending = fu;
+      say(`A follow-up question hangs off a question with answer options (Drop Down, Radio Buttons or Multiple Select). There isn’t one on this page yet, so let’s add that question first${fu.answer ? `: type the question whose answer can be “${fu.answer}”` : ''}. I’ll set up the follow-up${fu.question ? ` “${DDF.short(fu.question, 60)}”` : ''} right after.`);
+      return askQuestion();
+    }
+    return choose('Which question should the follow-up depend on?', cands.map(q => ({ label: DDF.short(q.title, 60), value: q.id, aliases: [q.title] })), (c) => { fu.parentId = c.value; runFollowUp(fu); });
+  }
+  const { q: parent, pg } = found; fu.parentId = parent.id; chat.pageId = pg.id;
+  if (!DDF.OPTION_TYPES.includes(parent.type)) { say(`“${DDF.short(parent.title, 60)}” has no answer options, so a follow-up can’t depend on it.`); fu.parentId = null; chat.lastQ = null; return runFollowUp(fu); }
+  const optChoices = parent.options.map(o => ({ label: o, value: o }));
+  if (fu.answer) {
+    const m = matchChoice(fu.answer, optChoices);
+    if (m) fu.answer = m.value;
+    else if (/\b(1|one|any|an?|each|some)\b.*\b(options?|answers?|choices?)\b/i.test(fu.answer)) fu.answer = null;
+    else { say(`“${fu.answer}” isn’t one of the answers to “${DDF.short(parent.title, 60)}” (${parent.options.join(', ')}).`); fu.answer = null; }
+  }
+  if (!fu.answer) return choose(`Which answer to “${DDF.short(parent.title, 60)}” should bring up the follow-up question?`, optChoices, (c) => { fu.answer = c.value; runFollowUp(fu); });
+  if (!fu.question) return ask(`If someone answers “${fu.answer}”, what should the follow-up question ask?`, (text) => { fu.question = tidyQuestion(text); runFollowUp(fu); }, [], 'e.g. Where are you employed?', { raw: true });
+  if (!fu.type) {
+    const sug = suggestLocal(fu.question).type;
+    const types = [sug, ...DDF.TYPES.filter(t => t !== sug)];
+    return choose(`What kind of answer does “${DDF.short(fu.question, 70)}” need? I’d suggest ${sug} (${TYPE_HELP[sug]}).`,
+      types.map((t, i) => ({ label: t, value: t, aliases: TYPE_ALIASES[t], hint: i === 0 ? 'suggested' : TYPE_HELP[t] })), (c) => { fu.type = c.value; runFollowUp(fu); });
+  }
+  if (DDF.OPTION_TYPES.includes(fu.type) && !fu.options) {
+    return ask(`What should the options be for “${DDF.short(fu.question, 60)}”? Separate them with commas.`, (text, chip) => {
+      const opts = chip || [...new Set(text.split(/\n|,|;|\s+\/\s+/).map(s => s.trim()).filter(Boolean))];
+      if (!opts.length || (opts.length < 2 && fu.type !== 'Radio Buttons')) { say(`A ${fu.type} needs at least two options.`); return runFollowUp(fu); }
+      fu.options = opts; runFollowUp(fu);
+    }, fu.type === 'Radio Buttons' ? [{ label: 'Use: Yes / No', value: ['Yes', 'No'] }] : [], 'e.g. Option A, Option B', { raw: true });
+  }
+  createFollowUp(fu, parent, pg);
+}
+function createFollowUp(fu, parent, pg) {
+  if (pg.questions.some(q => q.title.trim() === fu.question.trim())) { say(`There’s already a question called “${fu.question}” on this page. Rules find questions by wording, so I’ll need different wording.`); fu.question = null; return runFollowUp(fu); }
+  snapshot('add follow-up question');
+  const q = DDF.newQuestion(fu.question, fu.type, fu.options || []);
+  // place it after the parent and any follow-ups already hanging off it
+  let at = pg.questions.indexOf(parent) + 1;
+  const isChild = (x) => pg.rules.some(r => r.action === 'SHOW' && r.conds.some(c => c.qid === parent.id) && r.targets.some(t => t.id === x.id));
+  while (at < pg.questions.length && isChild(pg.questions[at])) at++;
+  pg.questions.splice(at, 0, q);
+  const r = DDF.newRule(); r.action = 'SHOW'; r.conds = [Object.assign(DDF.newCond(parent.id), { value: fu.answer })]; r.targets = [DDF.newTarget(q.id)];
+  pg.rules.push(r); chat.lastQ = parent.id; changed();
+  say(`Added the follow-up “${DDF.short(q.title, 70)}” (${q.type}) on “${pg.title}”, with this rule:\n${DDF.describeRule(form(), pg, r)}\nShufti will receive: ${DDF.ruleToString(form(), pg, r)}`);
+  const others = parent.options.filter(o => o !== fu.answer);
+  choose(`Shufti hasn’t confirmed whether a question named in a Show rule starts hidden. Should I also add a Hide rule, so it’s hidden whenever the answer is not “${fu.answer}”?`,
+    [{ label: 'Yes, add the Hide rule too', value: true, aliases: ['yes', 'y', 'add it', 'both'] }, { label: 'No, just the Show rule', value: false, aliases: ['no', 'n', 'just show', 'show only'] }], (c) => {
+      if (c.value) {
+        snapshot('add hide rule');
+        const h = DDF.newRule(); h.action = 'HIDE'; h.conds = [Object.assign(DDF.newCond(parent.id), { op: 'NOT_EQUAL', value: fu.answer })]; h.targets = [DDF.newTarget(q.id)];
+        pg.rules.push(h); changed(); say('Added: ' + DDF.describeRule(form(), pg, h));
+      }
+      if (!others.length) return askQuestion();
+      choose(`Does another answer to “${DDF.short(parent.title, 60)}” need its own follow-up question?`,
+        others.map(o => ({ label: o, value: o })).concat({ label: 'No, next question', value: null, aliases: ['no', 'nope', 'none', 'next'] }),
+        (c2) => c2.value ? runFollowUp({ parentId: parent.id, answer: c2.value }) : askQuestion());
+    });
+}
+
+/* ---------- Assistant mode: Claude reads every typed message and edits the form through actions ---------- */
+// Used whenever the `sample` capability is available. The guided flow above is the fallback.
+const agent = { turns: [], refs: null, failures: 0 };
+
+function isStatusQuery(text) {
+  return /\b(where are we|where do we stand|where are we standing|what('?s| is) in (the|this|my) (form|ddf)|what questions|which questions|show (me )?(the )?(form|ddf|questions|summary)|summary|overview|so far|what do we have|what have we got|what('?s| is) (in )?(it|there) (now|so far)|show me what|status of the (form|ddf)|recap)\b/i.test(text);
+}
+function formOverview() {
+  const f = form();
+  if (!f.pages.length) return `“${f.name}” is empty so far. Tell me the first question, or name the first page.`;
+  const qn = f.pages.reduce((n, p) => n + p.questions.length, 0), rn = f.pages.reduce((n, p) => n + p.rules.length, 0);
+  const lines = [`“${f.name}” has ${f.pages.length} page${f.pages.length === 1 ? '' : 's'}, ${qn} question${qn === 1 ? '' : 's'} and ${rn} rule${rn === 1 ? '' : 's'}:`];
+  f.pages.forEach((p, i) => {
+    lines.push(`\nPage ${i + 1}: ${p.title}`);
+    if (!p.questions.length) lines.push('  (no questions yet)');
+    p.questions.forEach((q, qi) => lines.push(`  ${qi + 1}. ${DDF.short(q.title, 90)} (${q.type}${q.options.length ? ': ' + q.options.join(', ') : ''})`));
+    p.rules.forEach(r => lines.push('  Rule: ' + DDF.describeRule(f, p, r)));
+  });
+  const errs = DDF.check(f).filter(i => i.level === 'error');
+  lines.push(errs.length ? `\n${errs.length} thing${errs.length === 1 ? '' : 's'} to fix, listed under Checks.` : '\nNothing needs fixing.');
+  return lines.join('\n');
+}
+
+function stateForClaude() {
+  const f = form(); const cur = curPage();
+  const refs = { q: {}, p: {}, r: {} }; let qi = 0, ri = 0;
+  const out = [`FORM “${f.name}”. Questions in total: ${f.pages.reduce((n, p) => n + p.questions.length, 0)} (Shufti's default limit is ${DDF.QUESTION_LIMIT}).`];
+  if (!f.pages.length) out.push('No pages yet. Add a page before adding questions.');
+  f.pages.forEach((p, pi) => {
+    const pref = 'p' + (pi + 1); refs.p[pref] = p.id;
+    out.push(`Page ${pref} ${JSON.stringify(p.title)}${p === cur ? '  <- current page' : ''}`);
+    p.questions.forEach(q => { const r = 'q' + (++qi); refs.q[r] = q.id; out.push(`  ${r} ${JSON.stringify(q.title)} [${q.type}]${q.options.length ? ' options: ' + q.options.map(o => JSON.stringify(o)).join(', ') : ''}`); });
+    if (!p.questions.length) out.push('  (no questions)');
+    p.rules.forEach(r => { const rr = 'r' + (++ri); refs.r[rr] = { page: p.id, rule: r.id }; out.push(`  rule ${rr}: ${DDF.describeRule(f, p, r)}`); });
+  });
+  agent.refs = refs;
+  return out.join('\n');
+}
+
+const AGENT_RULES = `You are the assistant inside AXIOMA's Shufti DDF builder. The user (a compliance consultant, not a developer) builds a Shufti Due Diligence Form by chatting with you. You change the form only through the actions below; the page applies them and shows the result.
+
+Shufti facts you must respect:
+- A form is a list of pages; each page holds questions. Answer types: ${DDF.TYPES.join(', ')}.
+- Only Radio Buttons, Drop Down and Multiple Select have options. Options must not contain commas or semicolons.
+- Question titles are what the applicant reads, so address the applicant directly ("Which pension fund pays your pension?", not "their pension"). They must be unique and must not contain "|||".
+- Rules belong to a page. Their conditions may only use questions on that same page, and compare a question with one of its options (EQUAL or NOT_EQUAL). SHOW/HIDE targets must be questions on the same page. JUMP/SKIP targets must be later pages. Join several conditions with AND or OR, never both in one rule.
+- A follow-up question ("if they pick X, ask Y") means: add question Y on the same page right after the parent question, plus a rule: parent EQUAL X, SHOW Y.
+
+How to behave:
+- Read the user's message in plain language and do what they mean in one go. A loose description like "add a question if the person is employed, unemployed or retired as a dropdown" becomes add_question with a clean applicant-facing title ("What is your employment status?"), type Drop Down and options Employed, Unemployed, Retired.
+- Put new questions on the current page unless the user names another page or clearly asks for a new page. "It does not go to another page" or "same page" means the current page.
+- If the form has no pages yet and the user gives a question, first add a page with a sensible title (such as "Personal Information") and say so.
+- If the user asks about the form ("where are we", "what questions are in it"), answer from the FORM STATE in "say", listing pages, questions and rules briefly, and make no changes.
+- After you add a question that has options, ask whether any of its answers should bring up a follow-up question. Offer one button per option plus "No follow-ups".
+- If the user picks an answer for a follow-up but has not said what to ask, ask what the follow-up question should be.
+- When the user wants something ambiguous, ask one short question with buttons instead of guessing. When a detail is minor, pick a sensible default and say what you chose.
+- Never invent Shufti features. If the user asks for something Shufti can't do, say so plainly.
+- "it", "that" or "this" means the question you or the user last talked about, not the form. Use rename_form only when the user says "form" (or "DDF") or gives a client name. If a requested title is already the current title, say so and change nothing.
+- When a question moves to another page, rules that link it to questions on its old page stop working. Say which rules will be removed, and delete them with delete_rule.
+- Deleting a question also deletes the rules that use it; say so.
+- The page shows a short list of the changes it applied right before your "say", so do not repeat that list. Write "say" in the past tense about what you did, then ask the next useful question.
+- "say" is short, plain and friendly: no markdown, no headings, at most about 6 lines unless you are listing the form.
+
+Reply with only one JSON object:
+{"say": "<message to the user>", "actions": [<zero or more actions>], "buttons": ["<short reply the user can click>", ...]}
+
+Actions (refer to existing items by their ref such as p1, q3, r2; refer to items you add in this same reply by their exact title):
+{"do": "rename_form", "name": "..."}
+{"do": "add_page", "title": "..."}
+{"do": "rename_page", "page": "p1", "title": "..."}
+{"do": "set_current_page", "page": "p2"}
+{"do": "add_question", "page": "p1", "title": "...", "type": "Drop Down", "options": ["...", "..."], "after": "q3"}   ("after" is optional; options only for option types)
+{"do": "edit_question", "question": "q2", "title": "...", "type": "...", "options": [...]}   (include only what changes)
+{"do": "delete_question", "question": "q2"}
+{"do": "move_question", "question": "q2", "page": "p3"}
+{"do": "add_rule", "page": "p1", "conditions": [{"question": "q1", "op": "EQUAL", "value": "Employed"}, {"join": "AND", "question": "q4", "op": "NOT_EQUAL", "value": "No"}], "action": "SHOW", "targets": ["q2"]}
+{"do": "delete_rule", "rule": "r2"}
+
+Example. Current page p1 has q1 "What is your employment status?" [Drop Down] options "Employed", "Unemployed", "Retired". User: "if someone chooses employed then ask where are you employed". Reply:
+{"say": "Done. “Where are you employed?” now only appears when someone picks Employed. Should Unemployed or Retired bring up a follow-up question too?", "actions": [{"do": "add_question", "page": "p1", "title": "Where are you employed?", "type": "Text", "after": "q1"}, {"do": "add_rule", "page": "p1", "conditions": [{"question": "q1", "op": "EQUAL", "value": "Employed"}], "action": "SHOW", "targets": ["Where are you employed?"]}], "buttons": ["Unemployed", "Retired", "No more follow-ups"]}`;
+
+function agentPrompt(userText, extra) {
+  const hist = agent.turns.slice(-12).map(t => (t.role === 'user' ? 'User: ' : 'Assistant: ') + t.content).join('\n');
+  return `${AGENT_RULES}\n\nFORM STATE (current):\n${stateForClaude()}\n\nRECENT CONVERSATION:\n${hist || '(none)'}\n\nUser's new message: ${JSON.stringify(userText)}${extra ? '\n\n' + extra : ''}`;
+}
+
+/* --- applying actions --- */
+function applyActions(actions) {
+  const f = form(); const refs = agent.refs || { q: {}, p: {}, r: {} };
+  const done = [], errors = []; let addedPage = null;
+  const allQ = () => f.pages.flatMap(p => p.questions.map(q => ({ q, p })));
+  const findPage = (ref) => {
+    if (!ref) return curPage();
+    if (refs.p[ref]) return f.pages.find(p => p.id === refs.p[ref]) || null;
+    if (/^p\d+$/i.test(String(ref).trim())) return addedPage || curPage();
+    return f.pages.find(p => p.title.trim().toLowerCase() === String(ref).trim().toLowerCase()) || null;
+  };
+  const findQ = (ref) => {
+    if (!ref) return null;
+    if (refs.q[ref]) return allQ().find(x => x.q.id === refs.q[ref]) || null;
+    return allQ().find(x => x.q.title.trim() === String(ref).trim()) || allQ().find(x => x.q.title.trim().toLowerCase() === String(ref).trim().toLowerCase()) || null;
+  };
+  const cleanOpts = (o) => Array.isArray(o) ? [...new Set(o.map(String).map(s => s.replace(/[,;]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean))] : [];
+  for (const a of (Array.isArray(actions) ? actions : [])) {
+    try {
+      switch (a && a.do) {
+        case 'rename_form': if (a.name) { f.name = String(a.name).trim(); renderFormBar(); done.push(`Renamed the form to “${f.name}”.`); } break;
+        case 'add_page': {
+          const t = String(a.title || '').trim(); if (!t) throw new Error('a page needs a title');
+          if (f.pages.some(p => p.title.trim().toLowerCase() === t.toLowerCase())) { chat.pageId = findPage(t).id; break; }
+          const p = DDF.newPage(t); f.pages.push(p); chat.pageId = p.id; addedPage = p; done.push(`Added the page “${t}”.`); break;
+        }
+        case 'rename_page': { const p = findPage(a.page); if (!p) throw new Error(`there is no page ${a.page}`); p.title = String(a.title).trim(); done.push(`Renamed the page to “${p.title}”.`); break; }
+        case 'set_current_page': { const p = findPage(a.page); if (p) chat.pageId = p.id; break; }
+        case 'add_question': {
+          let p = findPage(a.page);
+          if (!p && a.page && !refs.p[a.page]) { p = DDF.newPage(String(a.page)); f.pages.push(p); done.push(`Added the page “${p.title}”.`); }
+          if (!p) { p = DDF.newPage('Page 1'); f.pages.push(p); done.push('Added the page “Page 1”.'); }
+          const title = String(a.title || '').trim(); if (!title) throw new Error('a question needs a title');
+          if (/\|\|\|/.test(title)) throw new Error('a question title cannot contain |||');
+          if (allQ().some(x => x.q.title.trim() === title)) throw new Error(`there is already a question called “${title}”`);
+          const type = DDF.TYPES.includes(a.type) ? a.type : 'Text';
+          const opts = DDF.OPTION_TYPES.includes(type) ? cleanOpts(a.options) : [];
+          if (DDF.OPTION_TYPES.includes(type) && !opts.length) throw new Error(`“${title}” is ${type} but has no options`);
+          const q = DDF.newQuestion(title, type, opts);
+          const after = a.after ? findQ(a.after) : null;
+          if (after && after.p === p) {
+            let at = p.questions.indexOf(after.q) + 1;
+            const isChild = (x) => p.rules.some(r => r.action === 'SHOW' && r.conds.some(c => c.qid === after.q.id) && r.targets.some(t => t.id === x.id));
+            while (at < p.questions.length && isChild(p.questions[at])) at++;
+            p.questions.splice(at, 0, q);
+          } else p.questions.push(q);
+          chat.pageId = p.id; chat.lastQ = q.id;
+          done.push(`Added “${DDF.short(title, 70)}” (${type}${opts.length ? ': ' + opts.join(', ') : ''}) to “${p.title}”.`); break;
+        }
+        case 'edit_question': {
+          const x = findQ(a.question); if (!x) throw new Error(`there is no question ${a.question}`);
+          const before = x.q.options.slice();
+          if (a.title) { const t = String(a.title).trim(); if (allQ().some(y => y.q !== x.q && y.q.title.trim() === t)) throw new Error(`there is already a question called “${t}”`); x.q.title = t; }
+          if (a.type && DDF.TYPES.includes(a.type)) x.q.type = a.type;
+          if (a.options) { x.q.options = cleanOpts(a.options); renameAnswers(x.p, x.q, before, x.q.options); }
+          if (!DDF.OPTION_TYPES.includes(x.q.type)) x.q.options = [];
+          done.push(`Updated “${DDF.short(x.q.title, 70)}”.`); break;
+        }
+        case 'delete_question': {
+          const x = findQ(a.question); if (!x) throw new Error(`there is no question ${a.question}`);
+          const n = unlinkQ(x.p, x.q);
+          x.p.questions = x.p.questions.filter(q => q !== x.q); done.push(`Deleted “${DDF.short(x.q.title, 70)}”${n ? ` and ${n} rule${n === 1 ? '' : 's'} that used it` : ''}.`); break;
+        }
+        case 'move_question': {
+          const x = findQ(a.question), p = findPage(a.page); if (!x || !p) throw new Error('could not find that question or page');
+          const n = x.p !== p ? moveQToPageQuiet(x.p, x.q, p) : 0;
+          done.push(`Moved “${DDF.short(x.q.title, 70)}” to “${p.title}”.${n ? ` Removed ${n} rule${n === 1 ? '' : 's'} on “${x.p.title}” that used it, because rules only work within one page.` : ''}`); break;
+        }
+        case 'add_rule': {
+          const p = findPage(a.page) || (findQ((a.conditions || [])[0]?.question) || {}).p;
+          if (!p) throw new Error('could not tell which page the rule belongs to');
+          const action = String(a.action || '').toUpperCase(); if (!DDF.ACTIONS.includes(action)) throw new Error(`unknown action ${a.action}`);
+          const r = DDF.newRule(); r.action = action; r.conds = []; r.targets = [];
+          (a.conditions || []).forEach((c, i) => {
+            const x = findQ(c.question); if (!x) throw new Error(`there is no question ${c.question}`);
+            if (x.p !== p) throw new Error(`“${DDF.short(x.q.title, 50)}” is on another page, and a rule can only check questions on its own page`);
+            let value = String(c.value ?? '').trim();
+            if (DDF.OPTION_TYPES.includes(x.q.type)) {
+              const parts = x.q.type === 'Multiple Select' ? value.split(/\s*,\s*/) : [value];
+              const fixed = parts.map(v => (matchChoice(v, x.q.options.map(o => ({ label: o, value: o }))) || {}).value);
+              if (fixed.some(v => !v)) throw new Error(`“${value}” is not an answer to “${DDF.short(x.q.title, 50)}”`);
+              value = fixed.join(', ');
+            }
+            const cond = DDF.newCond(x.q.id); cond.op = c.op === 'NOT_EQUAL' ? 'NOT_EQUAL' : 'EQUAL'; cond.value = value; cond.join = i && c.join === 'OR' ? 'OR' : 'AND';
+            r.conds.push(cond);
+          });
+          if (!r.conds.length) throw new Error('a rule needs at least one condition');
+          (a.targets || []).forEach(t => {
+            if (DDF.isQAction(action)) { const x = findQ(t); if (!x || x.p !== p) throw new Error(`“${t}” is not a question on “${p.title}”`); r.targets.push(DDF.newTarget(x.q.id)); }
+            else { const tp = findPage(t); if (!tp) throw new Error(`there is no page ${t}`); if (f.pages.indexOf(tp) <= f.pages.indexOf(p)) throw new Error(`“${tp.title}” is not a later page`); r.targets.push(DDF.newTarget(tp.id)); }
+          });
+          if (!r.targets.length) throw new Error('a rule needs a target');
+          if (!DDF.isQAction(action)) r.targets = r.targets.slice(0, 1);
+          const str = DDF.ruleToString(f, p, r);
+          if (p.rules.some(x => DDF.ruleToString(f, p, x) === str)) break;
+          p.rules.push(r); done.push('Rule added: ' + DDF.describeRule(f, p, r)); break;
+        }
+        case 'delete_rule': {
+          const ref = refs.r[a.rule]; const p = ref && f.pages.find(x => x.id === ref.page); if (!p) throw new Error(`there is no rule ${a.rule}`);
+          if (p.rules.some(r => r.id === ref.rule)) { p.rules = p.rules.filter(r => r.id !== ref.rule); done.push('Deleted a rule.'); } break;
+        }
+        default: if (a && a.do) errors.push(`unknown action “${a.do}”`);
+      }
+    } catch (e) { errors.push(e.message); }
+  }
+  return { done, errors };
+}
+// Removes q from the rules on its page: rules that check it go, and it leaves Show/Hide target lists. Returns how many rules went.
+function unlinkQ(p, q) {
+  const before = p.rules.length;
+  p.rules = p.rules.filter(r => !r.conds.some(c => c.qid === q.id));
+  p.rules.forEach(r => { if (DDF.isQAction(r.action)) r.targets = r.targets.filter(t => t.id !== q.id); });
+  p.rules = p.rules.filter(r => r.targets.length);
+  return before - p.rules.length;
+}
+function moveQToPageQuiet(p, q, dest) {
+  const n = unlinkQ(p, q);
+  p.questions = p.questions.filter(x => x !== q); dest.questions.push(q);
+  return n;
+}
+
+/* --- the conversation loop --- */
+function agentStart() {
+  const f = form(); chat.formId = f.id; chat.log = []; chat.undo = []; agent.turns = [];
+  chat.pageId = (f.pages[f.pages.length - 1] || {}).id || null;
+  const hello = f.pages.length
+    ? `You’re working on “${f.name}”. Tell me what to add or change in your own words, for example “add a drop-down asking if they are employed, unemployed or retired”. Ask “what’s in the form?” any time for an overview.`
+    : 'Hi. Tell me what this form needs in your own words, for example “add a drop-down asking if the person is employed, unemployed or retired”. I’ll set up the question, its answers and any follow-up questions, and you can ask “what’s in the form?” any time.';
+  agentBot(hello, f.pages.length ? ['What’s in the form?', 'Add a question'] : ['Start with a “Personal Information” page']);
+}
+function agentBot(text, buttons = []) {
+  text = String(text ?? ''); if (text.length > 3000) text = text.slice(0, 2990) + '…';
+  if (!Array.isArray(buttons)) buttons = [];
+  buttons = [...new Set(buttons.filter(b => typeof b === 'string' && b.trim()).map(b => DDF.short(b, 60)))];
+  agent.turns.push({ role: 'assistant', content: text });
+  bot(text, buttons.slice(0, 6).map(b => ({ label: b, value: b })), { placeholder: 'Tell me what you need…', handler: agentHandle });
+}
+async function agentHandle(inp) {
+  const text = String(inp.chip || inp.text || '').trim(); if (!text) return agentBot('What would you like to do?');
+  const cmd = localCommand(text);
+  if (cmd === 'undo') { agent.turns.push({ role: 'user', content: text }); return agentUndo(); }
+  if (cmd === 'done') { agent.turns.push({ role: 'user', content: text }); return agentFinish(); }
+  if (isStatusQuery(text) && text.length < 90) { agent.turns.push({ role: 'user', content: text }); return agentBot(formOverview(), ['Add a question', 'I’m done']); }
+  agent.turns.push({ role: 'user', content: text });
+  let res = await askClaudeJSON(agentPrompt(text));
+  if (!sampleFn) {
+    say('Claude isn’t available here, so I’ll switch to step-by-step mode with buttons. Please type that again, one question at a time.');
+    return curPage() ? askQuestion() : askPageName(true);
+  }
+  if (!res && chat.lastError) {
+    agent.turns.pop();
+    return agentBot(chat.lastError === 'rate_limited' ? 'Claude is busy right now. Please send that again in a moment.' : 'Claude didn’t answer that time. Please send it again.', [text.length <= 60 ? text : 'What’s in the form?']);
+  }
+  if (!res || typeof res !== 'object') {
+    agent.failures++;
+    return agentBot('Sorry, I couldn’t work that out. Could you say it another way? For example: “add a drop-down asking …”, “if they pick X, ask Y”, or “what’s in the form?”.', ['What’s in the form?']);
+  }
+  snapshot('chat change');
+  let { done, errors } = applyActions(res.actions);
+  if (errors.length) {
+    // one repair round: show Claude what failed and let it correct itself
+    const retry = await askClaudeJSON(agentPrompt(text, `Your previous reply was ${JSON.stringify(res)}. The page applied what it could, and the FORM STATE above already includes those changes. These actions failed: ${errors.join('; ')}. Reply again with only the actions still needed to do what the user asked (or a clarifying question), using the refs in the current FORM STATE.`));
+    if (retry && typeof retry === 'object') {
+      const second = applyActions(retry.actions); done = done.concat(second.done); errors = second.errors;
+      res = { say: retry.say || res.say, buttons: retry.buttons || res.buttons };
+    }
+  }
+  if (!done.length) chat.undo.pop(); else { chat.undo[chat.undo.length - 1].label = DDF.short(done.join(' '), 160); changed(); }
+  const extra = [];
+  if (done.length) extra.push(done.join('\n'));
+  if (errors.length) extra.push('I couldn’t do all of it: ' + errors.join('; ') + '.');
+  const issues = DDF.check(form()).filter(i => i.level === 'error');
+  if (done.length && issues.length) extra.push(`Heads up: ${issues.length} item${issues.length === 1 ? '' : 's'} in Checks ${issues.length === 1 ? 'needs' : 'need'} fixing, starting with: ${issues[0].msg}`);
+  if (extra.length) say(extra.join('\n'));
+  agentBot(String(res.say || (done.length ? 'Done.' : 'What next?')), Array.isArray(res.buttons) ? res.buttons.map(String) : []);
+}
+function agentUndo() {
+  const u = chat.undo.pop(); if (!u) return agentBot('There’s nothing to undo yet.');
+  const f = JSON.parse(u.json); const i = lib.forms.findIndex(x => x.id === f.id); if (i < 0) return;
+  lib.forms[i] = f; renderFormBar(); changed();
+  if (!f.pages.find(p => p.id === chat.pageId)) chat.pageId = (f.pages[f.pages.length - 1] || {}).id || null;
+  agentBot(`Undone: ${u.label === 'chat change' ? 'my last change' : u.label}`, ['What’s in the form?']);
+}
+function agentFinish() {
+  const f = form(); const errs = DDF.check(f).filter(i => i.level === 'error').length;
+  const btns = []; if (downloads) btns.push('Download CSV'); btns.push('Copy CSV', 'Show the CSV');
+  say(formOverview());
+  bot(errs ? 'Fix the items under Checks, then export the CSV for Shufti.' : 'It matches Shufti’s format. Export the CSV when you’re ready.', btns.map(b => ({ label: b, value: b })), {
+    placeholder: 'Tell me what you need…', handler: async (inp) => {
+      const v = inp.chip || inp.text;
+      if (/download/i.test(v)) { $('#btnDownload').click(); return agentFinish(); }
+      if (/copy/i.test(v)) { $('#btnCopy').click(); return agentFinish(); }
+      if (/show.*csv|see.*csv/i.test(v)) { tab = 'csv'; renderMain(); return; }
+      return agentHandle(inp);
+    }
+  });
+}
+
+/* ===== PDF import: turn a client's onboarding PDF into a draft DDF ===== */
+// Fillable PDFs: the form fields are read directly (names, types, options, radio groups, checkboxes).
+// Flat PDFs: the text layout is read (labels with ____ lines, [ ] boxes, headings).
+// Scanned PDFs: there is no text, so the page images go to Claude when the viewer allows it.
+// Claude, when allowed, also tidies wording, groups sections and suggests rules. Anything guessed is listed under Checks.
+const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let pdfjsReady = null;
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return pdfjsReady || (pdfjsReady = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = PDFJS_URL;
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; res(window.pdfjsLib); };
+    s.onerror = () => { pdfjsReady = null; rej(new Error('The PDF reader could not be loaded. Check the internet connection and try again.')); };
+    document.head.append(s);
+  }));
+}
+
+/* ---------- 1. Read the PDF ---------- */
+async function pdfExtract(buf, step) {
+  const lib = await loadPdfJs();
+  let doc;
+  try { doc = await lib.getDocument({ data: buf, isEvalSupported: false }).promise; }
+  catch (e) { throw new Error(e && e.name === 'PasswordException' ? 'This PDF is password protected. Remove the password and try again.' : 'This file could not be read as a PDF.'); }
+  const pages = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    step && step(`Reading page ${n} of ${doc.numPages}…`);
+    const pg = await doc.getPage(n);
+    const tc = await pg.getTextContent();
+    const items = tc.items.filter(i => i.str && i.str.trim()).map(i => ({
+      text: i.str.replace(/\s+/g, ' '), x: i.transform[4], y: i.transform[5], w: i.width,
+      size: Math.round((Math.hypot(i.transform[2], i.transform[3]) || i.height || 10) * 10) / 10 }));
+    const annots = await pg.getAnnotations();
+    const fields = annots.filter(a => a.subtype === 'Widget' && a.fieldName).map(a => ({
+      name: a.fieldName, kind: a.fieldType, radio: !!a.radioButton, check: !!a.checkBox, push: !!a.pushButton,
+      value: a.buttonValue != null ? String(a.buttonValue) : (a.exportValue != null ? String(a.exportValue) : ''),
+      options: (a.options || []).map(o => String(o.displayValue ?? o.exportValue ?? '')).filter(Boolean),
+      combo: !!a.combo, multiSelect: !!a.multiSelect, multiline: !!a.multiLine, tip: a.alternativeText || '', rect: a.rect, page: n }));
+    pages.push({ n, items, fields, pg });
+  }
+  return { numPages: doc.numPages, pages };
+}
+// Page images for Claude, for PDFs without a text layer.
+async function pdfPageImages(ex, max) {
+  const out = [];
+  for (const p of ex.pages.slice(0, max)) {
+    const vp = p.pg.getViewport({ scale: 1.6 });
+    const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+    await p.pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    out.push(await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85)));
+  }
+  return out;
+}
+
+/* ---------- 2. Layout helpers (no DOM) ---------- */
+const PDFI = (() => {
+  const clean = (s) => String(s || '').replace(/_{2,}/g, ' ').replace(/\.{4,}/g, ' ').replace(/\s+/g, ' ').replace(/\s*[:：]\s*$/, '').trim();
+  const cap = (s) => s ? s[0].toUpperCase() + s.slice(1) : s;
+  const human = (name) => cap(String(name).split('.').pop().replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase());
+  // Merge text items into lines (same baseline), left to right.
+  function lines(items) {
+    const sorted = items.slice().sort((a, b) => b.y - a.y || a.x - b.x); const out = [];
+    for (const it of sorted) {
+      const l = out.find(l => Math.abs(l.y - it.y) < 3);
+      if (l) l.items.push(it); else out.push({ y: it.y, items: [it] });
+    }
+    out.forEach(l => { l.items.sort((a, b) => a.x - b.x); l.text = l.items.map(i => i.text).join(' ').replace(/\s+/g, ' ').trim(); l.x = l.items[0].x; l.size = Math.max(...l.items.map(i => i.size)); });
+    return out.sort((a, b) => b.y - a.y);
+  }
+  const median = (a) => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 10; };
+  function isHeading(l, body) {
+    const t = l.text;
+    if (t.length > 70 || /[:?]$|_{3}|\[ ?\]|☐|□/.test(t)) return false;
+    if (/^\s*(section\s+)?(\d{1,2}(\.\d{1,2})*|[A-H])[.)]\s+\S/i.test(t) && t.length < 60) return true;
+    return l.size >= body * 1.2 && t.split(' ').length <= 8;
+  }
+  const stripNum = (t) => t.replace(/^\s*(section\s+)?(\d{1,2}(\.\d{1,2})*|[A-H])[.)]\s+/i, '').trim();
+
+  // Type from the wording of a label or field name.
+  function guessType(label, name, multiline) {
+    const s = (label + ' ' + (name || '')).toLowerCase();
+    if (/\b(upload|attach|attachment|copy of|scan of|proof of)\b/.test(s) && !/\bdescribe|explain|specify\b/.test(s)) return { type: 'Upload File', why: 'its wording asks for a document' };
+    if (/\be-?mail\b/.test(s)) return { type: 'Email' };
+    if (/\b(date|dob|birth ?date|date of birth|expiry|issued on)\b/.test(s)) return { type: 'Date' };
+    if (/\b(country|nationality|citizenship|jurisdiction|country of residence)\b/.test(s) && !/\bcountries\b.*\band\b/.test(s)) return { type: 'Countries List', why: 'it asks for a country' };
+    if (/\b(amount|income|deposits?|revenue|turnover|net worth|how many|number of|percentage|value in|in (usd|eur|ang|awg|xcg))\b|\((usd|eur|ang|awg|xcg|%)\)/.test(s)) return { type: 'Float', why: 'it asks for a number' };
+    if (multiline || /\b(describe|explain|details of|nature of)\b/.test(s)) return { type: 'Paragraph' };
+    return { type: 'Text' };
+  }
+  const isSignature = (s) => /\bsignature\b|\bsigned by\b|\bsign here\b/i.test(s);
+
+  /* ----- fillable PDFs ----- */
+  function draftFromFields(ex) {
+    const body = median(ex.pages.flatMap(p => p.items.map(i => i.size)));
+    const notes = []; const qs = [];
+    const allLines = ex.pages.map(p => lines(p.items));
+    const labelLeft = (p, r, stopX) => {
+      const [x1, y1, x2, y2] = r;
+      const band = p.items.filter(i => i.y >= y1 - 5 && i.y <= y2 + 4 && i.x + i.w <= x1 + 2 && i.x >= (stopX || 0)).sort((a, b) => a.x - b.x);
+      if (band.length) return clean(band.map(i => i.text).join(' '));
+      const above = p.items.filter(i => i.y > y2 && i.y < y2 + 22 && i.x < x2 && i.x + i.w > x1 - 40).sort((a, b) => a.y - b.y);
+      return above.length ? clean(above.filter(i => Math.abs(i.y - above[0].y) < 3).map(i => i.text).join(' ')) : '';
+    };
+    const labelRight = (p, r) => {
+      const [x1, y1, x2, y2] = r;
+      const band = p.items.filter(i => i.y >= y1 - 5 && i.y <= y2 + 4 && i.x >= x2 - 2 && i.x < x2 + 40).sort((a, b) => a.x - b.x);
+      return band.length ? clean(band[0].text) : '';
+    };
+    const headingAbove = (pn, y) => {
+      for (let k = pn; k >= 1; k--) {
+        const ls = allLines[k - 1].filter(l => isHeading(l, body) && (k < pn || l.y > y));
+        const h = k === pn ? ls.filter(l => l.y > y).sort((a, b) => a.y - b.y)[0] : ls.sort((a, b) => a.y - b.y)[0];
+        if (h) return { text: stripNum(h.text), page: k, y: h.y, size: h.size };
+      }
+      return null;
+    };
+    // the largest line on page 1 is the form's own title, not a section
+    const top = allLines[0] ? allLines[0].slice().sort((a, b) => b.size - a.size)[0] : null;
+    const formTitle = top && top.size >= body * 1.35 ? top.text : '';
+    // Collect widgets in reading order and group by field name.
+    const ws = ex.pages.flatMap(p => p.fields.map(f => ({ ...f, p })));
+    ws.sort((a, b) => a.page - b.page || b.rect[3] - a.rect[3] || a.rect[0] - b.rect[0]);
+    const groups = new Map();
+    ws.forEach(w => { if (!groups.has(w.name)) groups.set(w.name, []); groups.get(w.name).push(w); });
+    const used = new Set();
+    const order = [...groups.keys()];
+    for (let gi = 0; gi < order.length; gi++) {
+      const name = order[gi]; if (used.has(name)) continue;
+      const g = groups.get(name); const w = g[0]; const p = w.p;
+      const sec = headingAbove(w.page, w.rect[3]);
+      const base = { source: name, section: sec ? sec.text : '', page: w.page, y: w.rect[3] };
+      if (w.push) { used.add(name); continue; }
+      if (w.kind === 'Sig') { notes.push(`Skipped the signature field “${name}”. Shufti has no signature answer type.`); used.add(name); continue; }
+      if (w.kind === 'Tx') {
+        const label = w.tip || labelLeft(p, w.rect) || human(name);
+        if (isSignature(label)) { notes.push(`Skipped “${label}”, a signature line.`); used.add(name); continue; }
+        const t = guessType(label, name, w.multiline);
+        qs.push({ ...base, title: cap(clean(label)), type: t.type, options: [], guess: t.why ? `Made “${clean(label)}” a ${t.type} question because ${t.why}.` : '' });
+        if (!w.tip && !labelLeft(p, w.rect)) notes.push(`No label was found next to the field “${name}”, so its question was named from the field name. Check the wording.`);
+        used.add(name); continue;
+      }
+      if (w.kind === 'Ch') {
+        const label = w.tip || labelLeft(p, w.rect) || human(name);
+        qs.push({ ...base, title: cap(clean(label)), type: w.multiSelect ? 'Multiple Select' : 'Drop Down', options: w.options, guess: '' });
+        used.add(name); continue;
+      }
+      if (w.kind === 'Btn' && w.radio) {
+        const first = g.slice().sort((a, b) => a.rect[0] - b.rect[0])[0];
+        const label = w.tip || labelLeft(p, first.rect) || human(name);
+        const opts = g.map(x => labelRight(x.p, x.rect) || human(x.value)).filter(Boolean);
+        qs.push({ ...base, title: cap(clean(label)), type: opts.length > 5 ? 'Drop Down' : 'Radio Buttons', options: opts, guess: opts.length > 5 ? `“${clean(label)}” has ${opts.length} choices, so it became a Drop Down instead of Radio Buttons.` : '' });
+        used.add(name); continue;
+      }
+      if (w.kind === 'Btn' && w.check) {
+        // Checkboxes stacked under one question, or on one row, form one Multiple Select.
+        const run = [w];
+        for (let k = gi + 1; k < order.length; k++) {
+          const nx = groups.get(order[k])[0]; const prev = run[run.length - 1];
+          if (!(nx.kind === 'Btn' && nx.check && nx.page === prev.page)) break;
+          const sameCol = Math.abs(nx.rect[0] - prev.rect[0]) < 6 && prev.rect[1] - nx.rect[3] < 18;
+          const sameRow = Math.abs(nx.rect[1] - prev.rect[1]) < 4;
+          if (!sameCol && !sameRow) break;
+          run.push(nx);
+        }
+        const optLabels = run.map(x => x.tip && run.length === 1 ? x.tip : (labelRight(x.p, x.rect) || x.tip || human(x.name)));
+        if (run.length === 1) {
+          const label = clean(w.tip || optLabels[0] || human(name));
+          qs.push({ ...base, title: cap(label), type: 'Radio Buttons', options: ['Yes'], guess: `“${DDF.short(label, 50)}” is a single tick box. It became Radio Buttons with one option, “Yes”. Check that Shufti makes it required.` });
+        } else {
+          const r0 = run[0].rect;
+          const above = lines(p.items).filter(l => l.y > r0[3] + 2 && l.y < r0[3] + 40 && !isHeading(l, body)).sort((a, b) => a.y - b.y)[0];
+          const left = labelLeft(p, r0);
+          const label = clean(left || (above ? above.text : '') || human(name.replace(/[_.]?[^_.]+$/, '')) || 'Please select');
+          const q = clean(label.replace(/\((tick|check|select|mark) (all|any)[^)]*\)/i, ''));
+          qs.push({ ...base, title: cap(q), type: 'Multiple Select', options: optLabels, guess: `Joined ${run.length} tick boxes (${run.map(x => x.name).join(', ')}) into one Multiple Select question.` });
+        }
+        run.forEach(x => used.add(x.name)); continue;
+      }
+      used.add(name);
+    }
+    return { formTitle, questions: qs, notes };
+  }
+
+  /* ----- flat PDFs (text only) ----- */
+  function draftFromText(ex) {
+    const body = median(ex.pages.flatMap(p => p.items.map(i => i.size)));
+    const notes = []; const qs = []; let section = ''; let formTitle = '';
+    const BOX = /\[\s?[xX✓]?\s?\]|☐|□|❑|◻|○|◯/;
+    ex.pages.forEach((p, pi) => {
+      const ls = lines(p.items);
+      if (pi === 0) { const top = ls.slice().sort((a, b) => b.size - a.size)[0]; if (top && top.size >= body * 1.35) formTitle = top.text; }
+      let pendingGroup = null; // a question line waiting for stacked [ ] options
+      const flush = () => { if (pendingGroup && pendingGroup.options.length) qs.push(pendingGroup); pendingGroup = null; };
+      for (let li = 0; li < ls.length; li++) {
+        const l = ls[li]; const t = l.text;
+        if (t === formTitle) continue;
+        if (isHeading(l, body)) { flush(); section = stripNum(t); continue; }
+        const base = { source: 'text p' + p.n, section, page: p.n, y: l.y };
+        if (BOX.test(t)) {
+          const parts = t.split(BOX).map(s => clean(s));
+          const label = parts.shift();
+          const opts = parts.filter(Boolean);
+          if (!label && opts.length === 1 && pendingGroup) { pendingGroup.options.push(opts[0]); continue; }
+          flush();
+          if (!label && opts.length === 1) {
+            qs.push({ ...base, title: cap(opts[0]), type: 'Radio Buttons', options: ['Yes'], guess: `“${DDF.short(opts[0], 50)}” is a single tick box. It became Radio Buttons with one option, “Yes”.` });
+            continue;
+          }
+          const many = /(tick|check|select|mark) (all|any)|all that apply/i.test(label);
+          const type = many ? 'Multiple Select' : opts.length > 5 ? 'Drop Down' : 'Radio Buttons';
+          qs.push({ ...base, title: cap(clean(label.replace(/\((tick|check|select|mark) (all|any)[^)]*\)/i, ''))), type, options: opts, guess: `Read “${DDF.short(clean(label), 50)}” from tick boxes as ${type}.` });
+          continue;
+        }
+        // A question followed by stacked "[ ] option" lines
+        if (/\?|\b(tick|select|choose|check) (all|one|any)\b|all that apply/i.test(t) && !/_{3}/.test(t) && ls[li + 1] && BOX.test(ls[li + 1].text) && !clean(ls[li + 1].text.split(BOX)[0])) {
+          flush();
+          const many = /(tick|check|select|mark) (all|any)|all that apply/i.test(t);
+          pendingGroup = { ...base, title: cap(clean(t.replace(/\((tick|check|select|mark) (all|any)[^)]*\)/i, ''))), type: many ? 'Multiple Select' : 'Radio Buttons', options: [], guess: `Read “${DDF.short(clean(t), 50)}” and the tick boxes under it as ${many ? 'Multiple Select' : 'Radio Buttons'}.` };
+          continue;
+        }
+        flush();
+        if (/^_{5,}$/.test(t.replace(/\s/g, ''))) { const last = qs[qs.length - 1]; if (last && last.type === 'Text') { last.type = 'Paragraph'; } continue; }
+        // "Label: ____" (several on one line), or "Label:" alone with a blank line below
+        const segs = t.split(/_{3,}/).map(s => clean(s)).filter(Boolean);
+        const blanks = /_{3,}/.test(t);
+        if (blanks || /:\s*$/.test(t)) {
+          segs.forEach(sg => {
+            if (isSignature(sg)) { notes.push(`Skipped “${sg}”, a signature line.`); return; }
+            const g = guessType(sg, '', false);
+            qs.push({ ...base, title: cap(sg), type: g.type, options: [], guess: g.why ? `Made “${DDF.short(sg, 50)}” a ${g.type} question because ${g.why}.` : '' });
+          });
+          continue;
+        }
+        if (/\b(attach|upload|provide|submit|enclose)\b.*\b(copy|copies|proof|document|passport|bill|statement|certificate|id)\b/i.test(t)) {
+          qs.push({ ...base, title: cap(clean(t).replace(/\.$/, '')), type: 'Upload File', options: [], guess: `“${DDF.short(clean(t), 50)}” asks for a document, so it became an Upload File question. If it names several documents, consider one upload per document.` });
+          continue;
+        }
+      }
+      flush();
+    });
+    if (!qs.length) notes.push('No questions could be read from the text layout.');
+    return { formTitle, questions: qs, notes };
+  }
+
+  /* ----- rules from wording like "If yes, please specify" ----- */
+  function inferRules(qs) {
+    const rules = [];
+    qs.forEach((q, i) => {
+      const m = q.title.match(/^if\s+(?:the\s+answer\s+is\s+|you\s+(?:are|answered|selected|ticked|chose)\s+)?["“']?([a-z][\w\s\-]{0,30}?)["”']?\s*(?:[,:;]|\s+(?:please|then|provide|give|state|specify|describe|name|list))/i);
+      if (!m) return;
+      let word = m[1].trim().toLowerCase(); if (word === 'so' || word === 'applicable') word = 'yes';
+      for (let k = i - 1; k >= 0 && k >= i - 4; k--) {
+        const pq = qs[k]; if (pq.section !== q.section) break;
+        if (!DDF.OPTION_TYPES.includes(pq.type)) continue;
+        const exact = pq.options.filter(o => o.toLowerCase() === word || o.toLowerCase().replace(/[^a-z]/g, '') === word.replace(/[^a-z]/g, ''));
+        const opts = exact.length ? exact : pq.options.filter(o => o.toLowerCase().startsWith(word));
+        if (opts.length && opts.length < pq.options.length) {
+          rules.push({ section: q.section, if: opts.map(o => ({ question: pq.title, op: 'EQUAL', value: o })), join: 'OR', action: 'SHOW', targets: [q.title], note: `Guessed from the wording “${DDF.short(q.title, 60)}”: it shows only when “${DDF.short(pq.title, 50)}” is ${opts.map(o => `“${o}”`).join(' or ')}.` });
+          break;
+        }
+      }
+    });
+    return rules;
+  }
+
+  /* ----- draft → spec in the shape Claude also returns ----- */
+  function toSpec(d, fileName) {
+    const secs = [];
+    d.questions.forEach(q => { const name = q.section || (d.questions.some(x => x.section) ? 'General' : 'Page ' + q.page); let s = secs.find(s => s.title === name); if (!s) secs.push(s = { title: name, questions: [] }); s.questions.push(q); });
+    const rules = inferRules(d.questions).map(r => ({ ...r, page: r.section || secs[0]?.title }));
+    return { form_name: d.formTitle || fileName.replace(/\.pdf$/i, ''), pages: secs.map(s => ({ title: s.title, questions: s.questions.map(q => ({ title: q.title, type: q.type, options: q.options, source: q.source, note: q.guess })) })), rules, skipped: d.notes };
+  }
+
+  /* ----- spec → DDF form, with every Shufti rule enforced ----- */
+  function specToForm(spec, fileName, extraNotes = []) {
+    const f = DDF.newForm(DDF.short(String(spec.form_name || fileName || 'Imported PDF').replace(/\.pdf$/i, ''), 80));
+    const warn = [`Made from the PDF “${fileName}”. Read every question and rule before sending it to Shufti.`];
+    const pageTitles = new Set(); const qTitles = new Set();
+    const uniq = (t, set) => { let u = t, n = 2; while (set.has(u.toLowerCase())) u = `${t} (${n++})`; set.add(u.toLowerCase()); return u; };
+    const tidy = (t) => String(t || '').replace(/\|\|\|/g, '/').replace(/;\s*(AND|OR|SHOW|HIDE|JUMP|SKIP)\s*;/gi, ' ').replace(/,\s*(EQUAL|NOT_EQUAL)\s*,/g, ' ').replace(/\s+/g, ' ').trim();
+    const byTitle = new Map();
+    (spec.pages || []).forEach(sp => {
+      const qsIn = (sp.questions || []).filter(q => q && tidy(q.title));
+      if (!qsIn.length) return;
+      const p = DDF.newPage(uniq(tidy(sp.title) || `Page ${f.pages.length + 1}`, pageTitles)); f.pages.push(p);
+      qsIn.forEach(q => {
+        let type = DDF.TYPES.find(t => t.toLowerCase() === String(q.type || '').toLowerCase()) || 'Text';
+        if (!DDF.TYPES.some(t => t.toLowerCase() === String(q.type || '').toLowerCase())) warn.push(`“${DDF.short(q.title, 50)}” had the unknown answer type “${q.type}”, so it is Text for now.`);
+        let opts = DDF.OPTION_TYPES.includes(type) ? [...new Set((q.options || []).map(o => tidy(o).replace(/,(?! )/g, ', ').replace(/;/g, ',')).filter(Boolean))] : [];
+        if (DDF.OPTION_TYPES.includes(type) && !opts.length) { warn.push(`“${DDF.short(q.title, 50)}” had no options in the PDF, so it is Text for now.`); type = 'Text'; }
+        const title = uniq(tidy(q.title), qTitles);
+        if (title !== tidy(q.title)) warn.push(`Two questions were both called “${DDF.short(tidy(q.title), 50)}”. The second is now “${DDF.short(title, 60)}”, because rules find questions by title.`);
+        const nq = DDF.newQuestion(title, type, opts); p.questions.push(nq);
+        byTitle.set(tidy(q.title).toLowerCase(), { q: nq, p }); byTitle.set(title.toLowerCase(), { q: nq, p });
+        if (q.note) { const n = String(q.note); warn.push(n.includes(title) && title.length > 12 ? n : `“${DDF.short(title, 60)}”: ${n}`); }
+      });
+    });
+    const findQ = (t) => byTitle.get(tidy(t).toLowerCase()) || [...byTitle.values()].find(x => x.q.title.toLowerCase().startsWith(tidy(t).toLowerCase().slice(0, 40)));
+    const added = [];
+    (spec.rules || []).forEach(r => {
+      const conds = (r.if || r.conditions || []).map(c => ({ ...c, hit: findQ(c.question) }));
+      const why = r.note ? ` (${DDF.short(r.note, 140)})` : '';
+      if (!conds.length || conds.some(c => !c.hit)) { warn.push(`Left out a suggested rule because it names a question that isn't in the form${why}.`); return; }
+      const p = conds[0].hit.p;
+      if (conds.some(c => c.hit.p !== p)) { warn.push(`Left out a suggested rule because its conditions are on different pages, and Shufti rules only use questions on their own page${why}.`); return; }
+      const action = String(r.action || 'SHOW').toUpperCase(); if (!DDF.ACTIONS.includes(action)) { warn.push(`Left out a suggested rule with the unknown action “${r.action}”${why}.`); return; }
+      const rule = DDF.newRule(); rule.action = action;
+      rule.conds = conds.map((c, i) => {
+        const nc = DDF.newCond(c.hit.q.id); nc.op = c.op === 'NOT_EQUAL' ? 'NOT_EQUAL' : 'EQUAL';
+        const o = c.hit.q.options; const v = String(c.value ?? '');
+        nc.value = o.length ? (o.find(x => x === v) || o.find(x => x.toLowerCase() === v.toLowerCase()) || v) : v;
+        if (i) nc.join = String(r.join || c.join || 'AND').toUpperCase() === 'OR' ? 'OR' : 'AND';
+        return nc;
+      });
+      if (DDF.isQAction(action)) {
+        const ts = (r.targets || []).map(findQ).filter(Boolean);
+        if (!ts.length || ts.some(t => t.p !== p)) { warn.push(`Left out a suggested rule because it would show or hide a question on another page${why}.`); return; }
+        rule.targets = ts.map(t => DDF.newTarget(t.q.id));
+      } else {
+        const tp = f.pages.find(x => x.title.toLowerCase() === tidy((r.targets || [])[0]).toLowerCase());
+        if (!tp || f.pages.indexOf(tp) <= f.pages.indexOf(p)) { warn.push(`Left out a suggested ${action.toLowerCase()} rule because it doesn't point at a later page${why}.`); return; }
+        rule.targets = [DDF.newTarget(tp.id)];
+      }
+      p.rules.push(rule); added.push({ p, rule, note: r.note });
+    });
+    // Commas: Shufti separates options with "," and rule targets with ", ", so keep them out of options and of titles that rules use.
+    const nocomma = (t) => t.replace(/(\d),(\d)/g, '$1.$2').replace(/\s*,\s*/g, ' - ');
+    f.pages.forEach(p => p.questions.forEach(q => {
+      if (!q.options.some(o => o.includes(','))) return;
+      const map = new Map(q.options.map(o => [o, nocomma(o)]));
+      q.options = q.options.map(o => map.get(o));
+      f.pages.forEach(pp => pp.rules.forEach(r => r.conds.forEach(c => { if (c.qid === q.id && map.has(c.value)) c.value = map.get(c.value); })));
+      warn.push(`Changed the options of “${DDF.short(q.title, 50)}” to ${[...map].filter(([a, b]) => a !== b).map(([a, b]) => `“${b}”`).join(', ')}, because Shufti uses commas to separate options and rule values.`);
+    }));
+    f.pages.forEach(p => {
+      const used = new Set(p.rules.flatMap(r => [...r.conds.map(c => c.qid), ...(DDF.isQAction(r.action) ? r.targets.map(t => t.id) : [])]));
+      p.questions.forEach(q => { if (used.has(q.id) && q.title.includes(',')) { const old = q.title; q.title = nocomma(q.title); warn.push(`Changed “${DDF.short(old, 60)}” to “${DDF.short(q.title, 60)}”, because a rule names it and Shufti reads “, ” in rules as a list separator.`); } });
+    });
+    added.forEach(({ p, rule, note }) => warn.push(`Suggested rule, check it: ${DDF.describeRule(f, p, rule)}${note && !/^Guessed/.test(note) ? ' Based on: ' + DDF.short(note.replace(/^based on:?\s*/i, ''), 120) : ''}`));
+    (spec.skipped || []).concat(extraNotes).forEach(n => n && warn.push(String(n)));
+    f.importNotes = [...new Set(warn)];
+    return f;
+  }
+
+  return { lines, isHeading, guessType, draftFromFields, draftFromText, inferRules, toSpec, specToForm, clean, median };
+})();
+
+
+/* ---------- 3. Claude's reading (optional) ---------- */
+function pdfLayoutText(ex) {
+  const body = PDFI.median(ex.pages.flatMap(p => p.items.map(i => i.size)));
+  return ex.pages.map(p => {
+    const ls = PDFI.lines(p.items).map(l => ({ y: l.y, t: (PDFI.isHeading(l, body) ? '[HEADING] ' : '') + l.text }));
+    p.fields.forEach(f => ls.push({ y: f.rect[3], t: `{{field "${f.name}" ${f.kind}${f.radio ? ' radio value=' + f.value : ''}${f.check ? ' checkbox' : ''}${f.options.length ? ' options=' + JSON.stringify(f.options) : ''}${f.multiline ? ' multiline' : ''}${f.tip ? ' tooltip=' + JSON.stringify(f.tip) : ''}}}` }));
+    return `--- PDF page ${p.n} ---\n` + ls.sort((a, b) => b.y - a.y).map(l => l.t).join('\n');
+  }).join('\n').slice(0, 150000);
+}
+const PDF_PROMPT = `You convert a client's onboarding PDF into a Shufti Due Diligence Form (DDF) for AXIOMA, a compliance consultancy.
+Return only JSON in this shape:
+{"form_name": "...", "pages": [{"title": "...", "questions": [{"title": "...", "type": "...", "options": ["..."], "source": "<PDF field name, or 'text'>", "note": "<only when you guessed: what and why>"}]}],
+ "rules": [{"page": "<page title>", "if": [{"question": "<exact question title>", "op": "EQUAL", "value": "<exact option>"}], "join": "AND", "action": "SHOW", "targets": ["<exact question title>"], "note": "<the PDF wording the rule is based on>"}],
+ "skipped": ["<anything in the PDF you did not turn into a question, and why>"]}
+Shufti rules you must follow:
+- Answer types, spelled exactly: ${'TYPES'}. Only Radio Buttons, Drop Down and Multiple Select have options. Options must not contain commas or semicolons.
+- One DDF page per section of the PDF. Page and question titles must be unique and must not contain "|||".
+- A rule's conditions use questions on the rule's own page. SHOW and HIDE targets are questions on that same page. JUMP and SKIP targets are titles of later pages. Use AND or OR in one rule, never both.
+- Wording such as "If yes, please specify" means a SHOW rule: the question appears only when the earlier question has that answer.
+- Signatures are skipped (Shufti has no signature type). Instructions such as "attach a copy of your passport" become Upload File questions, one per document.
+How to convert:
+- Keep every question the PDF asks, in order. When fillable fields are listed, every field becomes a question (except signatures and buttons) and its options keep the PDF's wording.
+- Titles are what the applicant reads: clear, short, and close to the PDF's wording. Keep format hints such as "(DD-MM-YYYY)".
+- Several tick boxes under one question are one Multiple Select (or Radio Buttons when only one may be ticked). A single "I declare" tick box is Radio Buttons with the one option "Yes".
+- Pick the answer type from the meaning: dates are Date, countries and nationality are Countries List, amounts are Float, long explanations are Paragraph.
+- Do not invent questions that are not in the PDF. Use "note" whenever you guessed a type, an option list, a title or a rule. Notes are short and factual, and never claim Shufti behaviour that is not stated above.
+- The page itself replaces commas in options and in titles that rules use, so keep the PDF's wording.`;
+async function claudeReadPdf(ex, draftSpec, images) {
+  if (!sampleFn) return null;
+  const prompt = PDF_PROMPT.replace("${'TYPES'}", DDF.TYPES.join(', ')) + (images
+    ? `\n\nThe PDF has no text layer (it is scanned). The ${images.length} attached image(s) are its pages, in order. Read the form from them.`
+    : `\n\nThe PDF's text in reading order, with [HEADING] marks and {{field ...}} markers where fillable fields sit:\n${pdfLayoutText(ex)}\n\nA first draft made by reading the layout mechanically (improve it, keep every question it found that is real):\n${JSON.stringify(draftSpec).slice(0, 60000)}`);
+  chat.busy = true;
+  try { return await sampleFn.json(prompt, images ? { images, modelTier: 'default' } : { modelTier: 'default' }); }
+  catch (e) { chat.lastError = (e && e.code) || 'error'; if (['not_granted', 'unavailable', 'capability_disabled', 'capability_removed'].includes(e && e.code)) sampleFn = null; return null; }
+  finally { chat.busy = false; }
+}
+// Every fillable field must survive Claude's version; anything it dropped is put back from the draft.
+function mergeMissing(spec, draftSpec, ex) {
+  const fieldNames = new Set(ex.pages.flatMap(p => p.fields.filter(f => !f.push && f.kind !== 'Sig').map(f => f.name)));
+  const seen = new Set((spec.pages || []).flatMap(p => (p.questions || []).map(q => String(q.source || ''))).flatMap(s => s.split(/\s*,\s*/)));
+  const back = [];
+  draftSpec.pages.forEach(dp => dp.questions.forEach(q => {
+    const srcs = String(q.source).split(/\s*,\s*/);
+    if (srcs.some(s => fieldNames.has(s)) && !srcs.some(s => seen.has(s))) {
+      let pg = (spec.pages || []).find(p => p.title === dp.title); if (!pg) { spec.pages = spec.pages || []; spec.pages.push(pg = { title: dp.title, questions: [] }); }
+      pg.questions.push({ ...q, note: `Claude's reading left out the PDF field “${q.source}”, so it was put back as “${q.title}”.` }); back.push(q.source);
+    }
+  }));
+  return back;
+}
+
+/* ---------- 4. The import flow ---------- */
+async function importPdfFile(file, step) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (!(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46)) throw new Error('This file is not a PDF.');
+  const ex = await pdfExtract(buf, step);
+  const nFields = new Set(ex.pages.flatMap(p => p.fields.filter(f => !f.push).map(f => f.name))).size;
+  const nChars = ex.pages.reduce((n, p) => n + p.items.reduce((m, i) => m + i.text.length, 0), 0);
+  const kind = nFields ? 'fillable' : nChars > 40 ? 'flat' : 'scanned';
+  const draft = kind === 'fillable' ? PDFI.draftFromFields(ex) : kind === 'flat' ? PDFI.draftFromText(ex) : { formTitle: '', questions: [], notes: [] };
+  const draftSpec = PDFI.toSpec(draft, file.name);
+  let spec = draftSpec, by = 'layout', extra = [];
+  if (sampleFn) {
+    let images = null;
+    if (kind === 'scanned') {
+      const lim = await sampleFn.limits?.().catch(() => null);
+      if (!lim || !lim.images) throw new Error('This PDF is a scan with no text in it. Reading a scan needs Claude to look at the page images, and that isn’t available here. A fillable or text PDF works without it.');
+      step && step('Preparing the page images…');
+      images = await pdfPageImages(ex, lim.images.maxCount || 5);
+      if (ex.numPages > images.length) extra.push(`Only the first ${images.length} of ${ex.numPages} pages were read, because that is the most images Claude can take at once. Import the rest separately.`);
+    }
+    step && step(kind === 'scanned' ? 'Claude is reading the scanned pages…' : 'Claude is reading the layout and suggesting rules…');
+    const res = await claudeReadPdf(ex, draftSpec, images);
+    if (res && Array.isArray(res.pages) && res.pages.some(p => (p.questions || []).length)) {
+      spec = res; by = 'claude';
+      if (kind === 'fillable') { const back = mergeMissing(spec, draftSpec, ex); if (back.length) by = 'claude+layout'; }
+    } else if (kind === 'scanned') {
+      throw new Error(chat.lastError === 'rate_limited' ? 'Claude is busy right now. Try the import again in a moment.' : 'Claude couldn’t read this scanned PDF. Try a clearer scan, or a fillable or text version of the form.');
+    } else extra.push('Claude wasn’t available for this import, so the questions come from the PDF layout alone. Wording and rules may need more review.');
+  } else if (kind === 'scanned') {
+    throw new Error('This PDF is a scan with no text in it. Reading a scan needs Claude, which isn’t available here. A fillable or text PDF works without it.');
+  } else extra.push('Claude isn’t available here, so the questions come from the PDF layout alone. Wording and rules may need more review.');
+  const f = PDFI.specToForm(spec, file.name, extra);
+  return { form: f, kind, by, fields: nFields, pages: ex.numPages };
+}
+function openPdfImport() {
+  const inp = el('input', { type: 'file', accept: 'application/pdf,.pdf', style: 'display:none' });
+  inp.onchange = async () => {
+    const file = inp.files[0]; inp.remove(); if (!file) return;
+    const msg = el('p', { class: 'hint', style: 'margin:0', 'aria-live': 'polite' }, 'Opening the PDF…');
+    const errP = el('p', { class: 'err-text', hidden: true });
+    const bar = el('div', { class: 'bar' });
+    const ov = el('div', { class: 'overlay' }, el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'pdfH' },
+      el('h2', { id: 'pdfH' }, 'Import a PDF'), el('p', { style: 'margin:0' }, file.name), msg, errP, bar));
+    document.body.append(ov);
+    const close = () => ov.remove();
+    try {
+      const r = await importPdfFile(file, (t) => { msg.textContent = t; });
+      lib.forms.push(r.form); lib.current = r.form.id; selPage = r.form.pages[0] ? r.form.pages[0].id : null; tab = 'build'; renderAll(); save();
+      const qn = r.form.pages.reduce((n, p) => n + p.questions.length, 0), rn = r.form.pages.reduce((n, p) => n + p.rules.length, 0);
+      const review = DDF.check(r.form).filter(i => i.level === 'warn').length, fix = DDF.check(r.form).filter(i => i.level === 'error').length;
+      msg.textContent = `${r.kind === 'fillable' ? `Read ${r.fields} fillable fields` : r.kind === 'flat' ? 'Read the text of this flat PDF' : 'Read the scanned pages'} over ${r.pages} page${r.pages === 1 ? '' : 's'}${r.by === 'layout' ? '' : ', with Claude'}. The new form “${r.form.name}” has ${r.form.pages.length} page${r.form.pages.length === 1 ? '' : 's'}, ${qn} question${qn === 1 ? '' : 's'} and ${rn} suggested rule${rn === 1 ? '' : 's'}. ${review} item${review === 1 ? '' : 's'} to review${fix ? ` and ${fix} to fix` : ''} are listed under Checks. Nothing was guessed silently.`;
+      bar.append(el('button', { class: 'btn primary', type: 'button', onclick: close }, 'Review the form'));
+    } catch (e) {
+      msg.textContent = ''; errP.hidden = false; errP.textContent = e.message || String(e);
+      bar.append(el('button', { class: 'btn', type: 'button', onclick: close }, 'Close'));
+    }
+  };
+  document.body.append(inp); inp.click();
+}
+
+load(); renderAll();
+(async () => { try { downloads = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { downloads = null; } $('#btnDownload').hidden = !downloads; })();
+(async () => { try { sampleFn = window.claude && window.claude.use ? await window.claude.use('sample') : null; } catch (e) { sampleFn = null; } if (sampleFn && !chat.log.some(m => m.who === 'me')) chat.formId = null; if (tab === 'chat') renderChat(); })();
+</script>
